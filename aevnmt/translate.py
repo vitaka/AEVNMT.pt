@@ -167,10 +167,13 @@ class TranslationEngine:
 
             t1 = time.time()
             # Translate the sentences using the trained model.
+            moreargs={}
+            if hparams.sample_posterior_decoding:
+                moreargs['deterministic']=False
             hypotheses = self.translate_fn(
                 self.model, input_sentences,
                 self.vocab_src, self.vocab_tgt,
-                self.device, hparams)
+                self.device, hparams, **moreargs)
 
             num_translated += len(input_sentences)
 
