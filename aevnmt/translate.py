@@ -20,6 +20,8 @@ from pathlib import Path
 
 class TranslationEngine:
 
+    NBEST_SEPARATOR=" ||| "
+
     def __init__(self, hparams):
 
         output_dir = Path(hparams.output_dir)
@@ -186,17 +188,17 @@ class TranslationEngine:
 
         if hparams.show_raw_output:
             for i in range(len(input_data)):
-                print(i + self.n_translated, '|||', input_data[i], '|||', all_hypotheses[i], file=sys.stderr)
+                print(i + self.n_translated, '|||', input_data[i], '|||', all_hypotheses[i][0], file=sys.stderr)
 
         if hparams.max_sentence_length > 0:  # join sentences that might have been split
-            all_hypotheses = input_data.join(all_hypotheses)
+            all_hypotheses =  np.array([ input_data.join(hyps_n) for hyps_n in np.array(all_hypotheses).transpose(1,0)  ]).transpose(1,0)
 
         # Post-processing
-        all_hypotheses = [self.pipeline.post(h) for h in all_hypotheses]
+        all_hypotheses = [ [self.pipeline.post(h) for h in h_nbest] for h_nbest in all_hypotheses]
 
         if stdout is not None:
-            for hypothesis in all_hypotheses:
-                print(hypothesis, file=stdout)
+            for nbest_hypotheses in all_hypotheses:
+                print(self.NBEST_SEPARATOR.join(nbest_hypotheses) , file=stdout)
 
         self.n_translated += len(input_data)
 
@@ -231,7 +233,7 @@ class TranslationEngine:
                 ref_sentences = TextDataset(reference_path).data
                 if self.hparams.postprocess_ref:
                     ref_sentences = [self.pipeline.post(r) for r in ref_sentences]
-                bleu = compute_bleu(translations, ref_sentences, subword_token=None)
+                bleu = compute_bleu([ t_nbest[0] for t_nbest in translations], ref_sentences, subword_token=None)
                 print(f"\nBLEU = {bleu:.4f}")
 
             # If an output file is given write the output to that file.
@@ -239,8 +241,8 @@ class TranslationEngine:
                 if self.verbose:
                     print(f"\nWriting translation output to {output_path}", file=sys.stderr)
                 with open(output_path, "w") as f:
-                    for translation in translations:
-                        f.write(f"{translation}\n")
+                    for translation_nbest in translations:
+                        f.write("{}\n".format(self.NBEST_SEPARATOR.join(translation_nbest)))
 
     def translate_stdin(self, stdout=sys.stdout):
         lines = [line for line in sys.stdin]

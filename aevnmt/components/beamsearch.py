@@ -39,14 +39,13 @@ def tile(x, count, dim=0):
 
 def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, encoder_outputs,
                 encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, beam_width, alpha,
-                max_len):
+                max_len,n_best=1):
     """
     Beam search with size beam_width. Follows OpenNMT-py implementation.
     In each decoding step, find the k most likely partial hypotheses.
 
     :param decoder: an initialized decoder
     """
-    n_best = 1
     decoder.eval()
     with torch.no_grad():
 
@@ -201,18 +200,15 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
                 hidden = hidden.index_select(1, select_indices)
 
     def pad_and_stack_hyps(hyps, pad_value):
-        filled = np.ones((len(hyps), max([h.shape[0] for h in hyps])),
+        filled = np.ones((len(hyps), n_best,max( [ max([h.shape[0] for h in h_nbest]) for h_nbest in hyps ] ) ),
                          dtype=int) * pad_value
-        for j, h in enumerate(hyps):
-            for k, i in enumerate(h):
-                filled[j, k] = i
+        for j, h_nbest in enumerate(hyps):
+            for n, h in enumerate(h_nbest):
+                for k, i in enumerate(h):
+                    filled[j ,n, k] = i
         return filled
 
-    # from results to stacked outputs
-    # only works for n_best=1 for now
-    assert n_best == 1
-
-    final_outputs = pad_and_stack_hyps([r[0].cpu().numpy() for r in
+    final_outputs = pad_and_stack_hyps([ [rn.cpu().numpy() for rn in r] for r in
                                         results["predictions"]],
                                         pad_value=pad_idx)
 

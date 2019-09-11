@@ -54,6 +54,7 @@ options = {
                                                  " beam search decoding.", 2),
     "sample_decoding": (bool, False, False, "When decoding, sample instead of searching for the translation with maximum probability.", 2),
     "sample_posterior_decoding": (bool, False, False, "When decoding with AEVNMT, sample from the approximate posterior instead of taking the mean.", 2),
+    "n_best": (int, 1, False, "Produce n-best translations with beam search.", 2),
 
     # Optimization hyperparameters
     "gen_optimizer": (str, "adam", False, "Optimizer for generative parameters (options: adam, amsgrad, adadelta, sgd)", 3),
