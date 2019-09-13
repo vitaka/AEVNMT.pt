@@ -54,6 +54,7 @@ options = {
                                                  " beam search decoding.", 2),
     "sample_decoding": (bool, False, False, "When decoding, sample instead of searching for the translation with maximum probability.", 2),
     "sample_posterior_decoding": (bool, False, False, "When decoding with AEVNMT, sample from the approximate posterior instead of taking the mean.", 2),
+    "sample_prior_decoding": (bool, False, False, "When decoding with AEVNMT, sample from the Gaussian prior and ignore the posterior.", 2),
     "n_best": (int, 1, False, "Produce n-best translations with beam search.", 2),
     "re_generate_sl": (bool, False, False, "When decoding, generate SL sentences with the LM instead of translations.", 2),
 

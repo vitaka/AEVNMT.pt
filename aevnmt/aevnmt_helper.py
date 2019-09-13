@@ -134,13 +134,16 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl}
 
 
-def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None):
+def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False):
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
 
         if z is None:
             qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
+            if use_prior:
+                #TODO:We are computing qz and it is not need
+                qz=model.prior().expand(qz.mean.size())
             z = qz.mean if deterministic else qz.sample()
 
         hidden = model.init_lm(z)
@@ -172,7 +175,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
 
     return np.array(hypothesis_l).transpose(1, 0),z
 
-def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True,z=None):
+def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True,z=None,use_prior=False):
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
@@ -180,6 +183,9 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
         if z is None:
             # For translation we use the approximate posterior mean.
             qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
+            if use_prior:
+                #TODO:We are computing qz and it is not need
+                qz=model.prior().expand(qz.mean.size())
             z = qz.mean if deterministic else qz.sample()
 
         encoder_outputs, encoder_final = model.encode(x_in, seq_len_x, z)

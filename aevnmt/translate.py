@@ -188,10 +188,12 @@ class TranslationEngine:
             t1 = time.time()
             # Translate the sentences using the trained model.
             moreargs={}
-            if hparams.sample_posterior_decoding:
+            if hparams.sample_posterior_decoding or hparams.sample_prior_decoding:
                 moreargs['deterministic']=False
             if input_zs is not None:
                 moreargs['z']=input_zs.float()
+            if hparams.sample_prior_decoding:
+                moreargs['use_prior']=True
             hypotheses,zs = self.translate_fn(
                 self.model, input_sentences,
                 self.vocab_src, self.vocab_tgt,
