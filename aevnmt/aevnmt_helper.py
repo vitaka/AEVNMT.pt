@@ -134,6 +134,43 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl}
 
 
+def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True):
+    model.eval()
+    with torch.no_grad():
+        x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
+
+        qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
+        z = qz.mean if deterministic else qz.sample()
+
+        hidden = model.init_lm(z)
+
+        if hparams.sample_decoding:
+            raw_hypothesis = sampling_decode(model.language_model, model.src_embed,
+                                           model.lm_generate, hidden,
+                                           None, None,
+                                           seq_mask_x, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
+                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length)
+        elif hparams.beam_width <= 1:
+            raw_hypothesis = greedy_decode(model.language_model, model.src_embed,
+                                           model.lm_generate, hidden,
+                                           None, None,
+                                           seq_mask_x, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
+                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length)
+        else:
+            raw_hypothesis = beam_search(model.language_model, model.src_embed, model.lm_generate,
+                                         vocab_src.size(), hidden, None,
+                                         None, seq_mask_x,
+                                         vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
+                                         vocab_src[PAD_TOKEN], hparams.beam_width,
+                                         hparams.length_penalty_factor,
+                                         hparams.max_decoding_length,hparams.n_best)
+
+    hypothesis_l=[]
+    for n in range(raw_hypothesis.size(1)):
+        hypothesis_l.append(batch_to_sentences(raw_hypothesis[:,n,:], vocab_src))
+
+    return np.array(hypothesis_l).transpose(1, 0)
+
 def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True):
     model.eval()
     with torch.no_grad():

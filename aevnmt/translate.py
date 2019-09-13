@@ -14,6 +14,8 @@ from aevnmt.data.textprocessing import Tokenizer, Detokenizer
 from aevnmt.data.textprocessing import Lowercaser, Truecaser, Recaser
 from aevnmt.data.textprocessing import WordSegmenter, WordDesegmenter
 
+from aevnmt import aevnmt_helper
+
 from torch.utils.data import DataLoader
 from pathlib import Path
 
@@ -87,7 +89,7 @@ class TranslationEngine:
         if hparams.tokenize:
             preprocess.append(Tokenizer(hparams.src))
         if hparams.detokenize:
-            postprocess.append(Detokenizer(hparams.tgt))
+            postprocess.append(Detokenizer(hparams.tgt if not hparams.re_generate_sl else hparams.src))
 
         # Case
         if hparams.lowercase and hparams.truecaser_prefix:
@@ -99,7 +101,7 @@ class TranslationEngine:
         if hparams.truecaser_prefix:
             preprocess.append(Truecaser(f"{hparams.truecaser_prefix}.{hparams.src}"))
         if hparams.recase:
-            postprocess.append(Recaser(hparams.tgt))
+            postprocess.append(Recaser(hparams.tgt if not hparams.re_generate_sl else hparams.src))
 
         # Word segmentation
         if hparams.bpe_codes_prefix:
@@ -130,6 +132,8 @@ class TranslationEngine:
 
         self.model = model.to(self.device)
         self.translate_fn = translate_fn
+        if self.hparams.re_generate_sl:
+            self.translate_fn=aevnmt_helper.re_sample
         self.model.eval()
         if self.verbose:
             print("Done loading in %.2f seconds" % (time.time() - t0), file=sys.stderr)

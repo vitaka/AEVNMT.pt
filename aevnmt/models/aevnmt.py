@@ -129,6 +129,13 @@ class AEVNMT(nn.Module):
         W = self.tgt_embedder.weight if self.tied_embeddings else self.output_matrix
         return F.linear(pre_output, W)
 
+    def lm_generate(self, pre_output):
+        return pre_output
+
+    def init_lm(self, z):
+        hidden = tile_rnn_hidden(self.lm_init_layer(z), self.language_model.rnn)
+        return hidden
+
     def run_language_model(self, x, z):
         """
         Runs the language_model.

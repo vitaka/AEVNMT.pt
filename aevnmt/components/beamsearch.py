@@ -48,8 +48,9 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
     """
     decoder.eval()
     with torch.no_grad():
-
+        #TODO: check whether we are generating with LM?
         luong_decoding = isinstance(decoder, LuongDecoder)
+        lm_decoding=(encoder_outputs is None)
 
         # Initialize the hjidden state and create the initial input.
         batch_size = seq_mask_x.size(0)
@@ -59,29 +60,31 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
 
         # Tile hidden decoder states and encoder outputs beam_width times
         hidden = tile(hidden, beam_width, dim=1)    # [layers, B*beam_width, H_dec]
-        decoder.attention.proj_keys = tile(decoder.attention.proj_keys,
+        if not lm_decoding:
+            decoder.attention.proj_keys = tile(decoder.attention.proj_keys,
                                            beam_width, dim=0)
-        encoder_outputs = tile(encoder_outputs.contiguous(), beam_width,
+        if not lm_decoding:
+            encoder_outputs = tile(encoder_outputs.contiguous(), beam_width,
                                dim=0)               # [B*beam_width, T_x, H_enc]
         seq_mask_x = tile(seq_mask_x, beam_width, dim=0)    # [B*beam_width, 1, T_x]
 
         batch_offset = torch.arange(
-            batch_size, dtype=torch.long, device=encoder_outputs.device)
+            batch_size, dtype=torch.long, device=seq_mask_x.device)
         beam_offset = torch.arange(
             0,
             batch_size * beam_width,
             step=beam_width,
             dtype=torch.long,
-            device=encoder_outputs.device)
+            device=seq_mask_x.device)
         alive_seq = torch.full(
             [batch_size * beam_width, 1],
             sos_idx,
             dtype=torch.long,
-            device=encoder_outputs.device)
+            device=seq_mask_x.device)
 
         # Give full probability to the first beam on the first step.
         topk_log_probs = (torch.tensor([0.0] + [float("-inf")] * (beam_width - 1),
-                                       device=encoder_outputs.device).repeat(
+                                       device=seq_mask_x.device).repeat(
                                         batch_size))
 
         # Structure that holds finished hypotheses.
@@ -98,7 +101,10 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
             # expand current hypotheses, decode one single step
             if luong_decoding: hidden = (hidden, prev_pre_output)
             prev_y = tgt_embed_fn(prev_y)
-            pre_output, hidden, _ = decoder.step(prev_y, hidden, seq_mask_x, encoder_outputs)
+            if lm_decoding:
+                hidden,pre_output = decoder.step(prev_y, hidden)
+            else:
+                pre_output, hidden, _ = decoder.step(prev_y, hidden, seq_mask_x, encoder_outputs)
             logits = generator_fn(pre_output)
             if luong_decoding: hidden, prev_pre_output = hidden
             log_probs = F.log_softmax(logits, dim=-1).squeeze(1)  # [B*beam_width, |V_y|]
@@ -182,9 +188,11 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
 
             # reorder indices, outputs and masks
             select_indices = batch_index.view(-1)
-            encoder_outputs = encoder_outputs.index_select(0, select_indices)
+            if not lm_decoding:
+                encoder_outputs = encoder_outputs.index_select(0, select_indices)
             seq_mask_x = seq_mask_x.index_select(0, select_indices)
-            decoder.attention.proj_keys = decoder.attention.proj_keys. \
+            if not lm_decoding:
+                decoder.attention.proj_keys = decoder.attention.proj_keys. \
                     index_select(0, select_indices)
             if luong_decoding:
                 prev_pre_output = prev_pre_output.index_select(0, select_indices)
