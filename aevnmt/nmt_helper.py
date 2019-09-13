@@ -104,7 +104,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams):
     for n in range(raw_hypothesis.size(1)):
         hypothesis_l.append(batch_to_sentences(raw_hypothesis[:,n,:], vocab_tgt))
 
-    return np.array(hypothesis_l).transpose(1, 0)
+    return np.array(hypothesis_l).transpose(1, 0),None
 
 def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams):
     model.eval()

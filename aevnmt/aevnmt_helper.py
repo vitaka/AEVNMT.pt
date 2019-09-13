@@ -134,13 +134,14 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl}
 
 
-def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True):
+def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None):
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
 
-        qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
-        z = qz.mean if deterministic else qz.sample()
+        if z is None:
+            qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
+            z = qz.mean if deterministic else qz.sample()
 
         hidden = model.init_lm(z)
 
@@ -169,16 +170,17 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
     for n in range(raw_hypothesis.size(1)):
         hypothesis_l.append(batch_to_sentences(raw_hypothesis[:,n,:], vocab_src))
 
-    return np.array(hypothesis_l).transpose(1, 0)
+    return np.array(hypothesis_l).transpose(1, 0),z
 
-def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True):
+def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True,z=None):
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
 
-        # For translation we use the approximate posterior mean.
-        qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
-        z = qz.mean if deterministic else qz.sample()
+        if z is None:
+            # For translation we use the approximate posterior mean.
+            qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
+            z = qz.mean if deterministic else qz.sample()
 
         encoder_outputs, encoder_final = model.encode(x_in, seq_len_x, z)
         hidden = model.init_decoder(encoder_outputs, encoder_final, z)
@@ -208,7 +210,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
     for n in range(raw_hypothesis.size(1)):
         hypothesis_l.append(batch_to_sentences(raw_hypothesis[:,n,:], vocab_tgt))
 
-    return np.array(hypothesis_l).transpose(1, 0)
+    return np.array(hypothesis_l).transpose(1, 0),z
 
 def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams):
     model.eval()

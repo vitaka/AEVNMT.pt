@@ -99,6 +99,10 @@ options = {
                                                " ignored for training.", 4),
     "translation_output_file": (str, None, False, "The translation output file,"
                                                 " ignored for training.", 4),
+    "z_output_file": (str, None, False, "The output file for z,"
+                                                " ignored for training.", 4),
+    "z_input_file": (str, None, False, "Z vectors to be used during translation. Skipped posterior approximation,"
+                                                " ignored for training.", 4),
     "translation_ref_file": (str, None, False, "The translation references file", 4),
     "verbose": (bool, False, False, "Print logging information", 4),
     "show_raw_output": (bool, False, False, "Prints raw output (tokenized, truecased, BPE-segmented, max-len splitting) to stderr", 4),
