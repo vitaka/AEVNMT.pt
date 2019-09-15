@@ -187,6 +187,9 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
                 #TODO:We are computing qz and it is not need
                 qz=model.prior().expand(qz.mean.size())
             z = qz.mean if deterministic else qz.sample()
+        else:
+            #Ensure it is loaded in GPU
+            z=z.to(x_in.device)
 
         encoder_outputs, encoder_final = model.encode(x_in, seq_len_x, z)
         hidden = model.init_decoder(encoder_outputs, encoder_final, z)
