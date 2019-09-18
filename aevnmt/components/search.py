@@ -3,7 +3,7 @@ from torch.distributions.categorical import Categorical
 
 
 def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len, greedy=False):
+                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len, greedy=False,sampling_nucleus_p=1.0):
     """
     :param decoder: an instance of aevnmt.components.LuongDecoder or
                     aevnmt.components.BahdanauDecoder that has been
@@ -38,9 +38,27 @@ def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_output
             pre_output, hidden, _ = decoder.step(prev_y, hidden, seq_mask_x, encoder_outputs)
         logits = generator_fn(pre_output)
         py_x = Categorical(logits=logits)
+
         if greedy:
             prediction = torch.argmax(logits, dim=-1)
         else:
+            if sampling_nucleus_p < 1.0:
+                #import pdb; pdb.set_trace();
+
+                #sort probs from high to low
+                sortvals, sortidxs =py_x.probs.squeeze(dim=1).sort(descending=True)
+                #Sum probs
+                cumsums=sortvals.cumsum(dim=-1)
+                #original probs will be multiplied by these factors
+                probfactor=torch.where(cumsums >  sampling_nucleus_p, torch.zeros_like(cumsums), torch.ones_like(cumsums))
+                probfactor[:,0]=1.0
+                #But we need the factors in the original order, not in sorted probability order
+                restored_probfactor = torch.empty_like(py_x.probs)
+                #Probably there is a faster way of doing this..
+                for i in range(py_x.probs.size(0)):
+                    restored_probfactor[i][0][ sortidxs[i] ]=probfactor[i]
+                py_x=Categorical(probs=( py_x.probs * restored_probfactor ))
+
             prediction = py_x.sample()
         prev_y = prediction.view(batch_size)
         log_prob_pred = py_x.log_prob(prediction)
@@ -61,9 +79,9 @@ def greedy_decode(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
     return d['sample'][:,None,:]
 
 def sampling_decode(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len):
+                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,nucleus_p=1.0):
     decoder.eval()
     with torch.no_grad():
         d = ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                      encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len, greedy=False)
+                      encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,greedy=False,sampling_nucleus_p=nucleus_p)
     return d['sample'][:,None,:]

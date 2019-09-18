@@ -53,6 +53,7 @@ options = {
     "length_penalty_factor": (float, 1.0, False, "Length penalty factor (alpha) for"
                                                  " beam search decoding.", 2),
     "sample_decoding": (bool, False, False, "When decoding, sample instead of searching for the translation with maximum probability.", 2),
+    "sample_decoding_nucleus_p": (float, 1.0, False, "Sampling from the top words that account for this probability mass.", 2),
     "sample_posterior_decoding": (bool, False, False, "When decoding with AEVNMT, sample from the approximate posterior instead of taking the mean.", 2),
     "sample_prior_decoding": (bool, False, False, "When decoding with AEVNMT, sample from the Gaussian prior and ignore the posterior.", 2),
     "n_best": (int, 1, False, "Produce n-best translations with beam search.", 2),

@@ -153,7 +153,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                                            model.lm_generate, hidden,
                                            None, None,
                                            seq_mask_x, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
-                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length)
+                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p)
         elif hparams.beam_width <= 1:
             raw_hypothesis = greedy_decode(model.language_model, model.src_embed,
                                            model.lm_generate, hidden,
@@ -199,7 +199,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
                                            model.generate, hidden,
                                            encoder_outputs, encoder_final,
                                            seq_mask_x, vocab_tgt[SOS_TOKEN], vocab_tgt[EOS_TOKEN],
-                                           vocab_tgt[PAD_TOKEN], hparams.max_decoding_length)
+                                           vocab_tgt[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p)
         elif hparams.beam_width <= 1:
             raw_hypothesis = greedy_decode(model.decoder, model.tgt_embed,
                                            model.generate, hidden,
