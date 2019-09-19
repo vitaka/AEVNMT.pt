@@ -38,10 +38,55 @@ class InferenceNetwork(nn.Module):
     def named_parameters(self, prefix='', recurse=True):
         return chain(self.encoder.named_parameters(prefix='', recurse=True), self.normal_layer.named_parameters(prefix='', recurse=True), )
 
+class BilingualInferenceNetwork(nn.Module):
+
+    def __init__(self, src_embedder, tgt_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type):
+        """
+        :param src_embedder: uses this embedder, but detaches its output from the graph as to not compute
+                             gradients for it.
+        :param tgt_embedder: uses this embedder, but detaches its output from the graph as to not compute
+                             gradients for it.
+        """
+        super().__init__()
+        self.src_embedder = src_embedder
+        self.tgt_embedder = tgt_embedder
+        emb_size = src_embedder.embedding_dim
+        self.src_encoder = RNNEncoder(emb_size=emb_size,
+                                  hidden_size=hidden_size,
+                                  bidirectional=bidirectional,
+                                  dropout=0.,
+                                  num_layers=num_enc_layers,
+                                  cell_type=cell_type)
+        emb_size=tgt_embedder.embedding_dim
+        self.tgt_encoder = RNNEncoder(emb_size=emb_size,
+                                  hidden_size=hidden_size,
+                                  bidirectional=bidirectional,
+                                  dropout=0.,
+                                  num_layers=num_enc_layers,
+                                  cell_type=cell_type)
+        encoding_size = hidden_size if not bidirectional else hidden_size * 2
+        self.normal_layer = NormalLayer(encoding_size*2, hidden_size, latent_size)
+
+    def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y):
+        x_embed = self.src_embedder(x).detach()
+        y_embed = self.src_embedder(y).detach()
+        encoder_src_outputs, _ = self.src_encoder(x_embed, seq_len_x)
+        encoder_tgt_outputs, _ = self.tgt_encoder(y_embed, seq_len_y)
+        avg_encoder_src_output = (encoder_src_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_src_outputs)).sum(dim=1)
+        avg_encoder_tgt_output = (encoder_tgt_outputs * seq_mask_y.unsqueeze(-1).type_as(encoder_tgt_outputs)).sum(dim=1)
+        return self.normal_layer(torch.cat((avg_encoder_src_output,avg_encoder_tgt_output), dim=-1))
+
+    def parameters(self, recurse=True):
+        return chain(self.src_encoder.parameters(recurse=recurse), self.tgt_encoder.parameters(recurse=recurse), self.normal_layer.parameters(recurse=recurse))
+
+    def named_parameters(self, prefix='', recurse=True):
+        #TODO: am I sure that prefix needs to be changed?
+        return chain(self.src_encoder.named_parameters(prefix='src', recurse=True), self.tgt_encoder.named_parameters(prefix='tgt', recurse=True)  ,  self.normal_layer.named_parameters(prefix='', recurse=True), )
+
 class AEVNMT(nn.Module):
 
     def __init__(self, tgt_vocab_size, emb_size, latent_size, encoder, decoder, language_model,
-                 pad_idx, dropout, tied_embeddings):
+                 pad_idx, dropout, tied_embeddings,separate_prediction_network):
         super().__init__()
         self.latent_size = latent_size
         self.pad_idx = pad_idx
@@ -59,12 +104,28 @@ class AEVNMT(nn.Module):
                                                 nn.Tanh())
         self.lm_init_layer = nn.Sequential(nn.Linear(latent_size, language_model.hidden_size),
                                            nn.Tanh())
-        self.inf_network = InferenceNetwork(src_embedder=self.language_model.embedder,
-                                            hidden_size=encoder.hidden_size,
-                                            latent_size=latent_size,
-                                            bidirectional=encoder.bidirectional,
-                                            num_enc_layers=encoder.num_layers,
-                                            cell_type=encoder.cell_type)
+
+        if separate_prediction_network:
+            self.inf_network = BilingualInferenceNetwork(src_embedder=self.language_model.embedder,tgt_embedder=self.tgt_embedder,
+                                                hidden_size=encoder.hidden_size,
+                                                latent_size=latent_size,
+                                                bidirectional=encoder.bidirectional,
+                                                num_enc_layers=encoder.num_layers,
+                                                cell_type=encoder.cell_type)
+            self.pred_network = InferenceNetwork(src_embedder=self.language_model.embedder,
+                                                hidden_size=encoder.hidden_size,
+                                                latent_size=latent_size,
+                                                bidirectional=encoder.bidirectional,
+                                                num_enc_layers=encoder.num_layers,
+                                                cell_type=encoder.cell_type)
+        else:
+            self.inf_network = InferenceNetwork(src_embedder=self.language_model.embedder,
+                                                hidden_size=encoder.hidden_size,
+                                                latent_size=latent_size,
+                                                bidirectional=encoder.bidirectional,
+                                                num_enc_layers=encoder.num_layers,
+                                                cell_type=encoder.cell_type)
+            self.pred_network = self.inf_network
 
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
@@ -73,7 +134,10 @@ class AEVNMT(nn.Module):
         self.register_buffer("prior_scale", torch.ones([latent_size]))
 
     def inference_parameters(self):
-        return self.inf_network.parameters()
+        if self.inf_network == self.pred_network:
+            return self.inf_network.parameters()
+        else:
+            return chain(self.inf_network.parameters(), self.pred_network.parameters())
 
     def generative_parameters(self):
         # TODO: separate the generative model into a GenerativeModel module
@@ -93,11 +157,21 @@ class AEVNMT(nn.Module):
             params = chain(params, [self.output_matrix])
         return params
 
-    def approximate_posterior(self, x, seq_mask_x, seq_len_x):
+    def approximate_posterior(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y):
         """
         Returns an approximate posterior distribution q(z|x).
         """
-        return self.inf_network(x, seq_mask_x, seq_len_x)
+        if isinstance(self.inf_network,BilingualInferenceNetwork):
+            return self.inf_network(x, seq_mask_x, seq_len_x,y, seq_mask_y, seq_len_y)
+        else:
+            return self.inf_network(x, seq_mask_x, seq_len_x)
+
+    def approximate_posterior_prediction(self, x, seq_mask_x, seq_len_x):
+        """
+        Returns an approximate posterior distribution q(z|x).
+        """
+
+        return self.pred_network(x, seq_mask_x, seq_len_x)
 
     def prior(self):
         return torch.distributions.Normal(loc=self.prior_loc,
@@ -280,7 +354,7 @@ class AEVNMT(nn.Module):
         return -tm_loss
 
     def loss(self, tm_logits, lm_logits, targets_y, targets_x, qz, free_nats=0.,
-             KL_weight=1., reduction="mean"):
+             KL_weight=1., reduction="mean", qz_prediction=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -317,17 +391,23 @@ class AEVNMT(nn.Module):
         raw_KL = KL.sum(dim=1)
         KL = KL.sum(dim=1)
 
+        KL_prediction=0
+        if qz_prediction is not None:
+            KL_prediction=torch.distributions.kl.kl_divergence(qz,qz_prediction)
+            KL_prediction=KL_prediction.sum(dim=1)
+
         if free_nats > 0:
             KL = torch.clamp(KL, min=free_nats)
         KL *= KL_weight
-        elbo = tm_log_likelihood + lm_log_likelihood - KL
+        elbo = tm_log_likelihood + lm_log_likelihood - KL - KL_prediction
         loss = -elbo
 
         out_dict = {
             'tm_log_likelihood': tm_log_likelihood,
             'lm_log_likelihood': lm_log_likelihood,
             'KL': KL,
-            'raw_KL': raw_KL
+            'raw_KL': raw_KL,
+            'KL_prediction': KL_prediction
         }
 
         # Return differently according to the reduction setting.

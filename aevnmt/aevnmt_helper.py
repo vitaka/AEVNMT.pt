@@ -52,14 +52,14 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    language_model=rnnlm,
                    pad_idx=vocab_tgt[PAD_TOKEN],
                    dropout=hparams.dropout,
-                   tied_embeddings=hparams.tied_embeddings)
+                   tied_embeddings=hparams.tied_embeddings, separate_prediction_network=hparams.separate_prediction_network)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
                hparams, step):
 
-    # Use q(z|x) for training to sample a z.
-    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
+    # Use q(z|x,y) for training to sample a z.
+    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y)
     z = qz.rsample()
 
     # Compute the translation and language model logits.
@@ -71,11 +71,15 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     else:
         KL_weight = 1.
 
+    qz_prediction=None
+    if model.pred_network != model.inf_network:
+        qz_prediction=model.pred_network(x_in, seq_mask_x, seq_len_x)
+
     # Compute the loss.
     loss = model.loss(tm_logits, lm_logits, y_out, x_out, qz,
                       free_nats=hparams.KL_free_nats,
                       KL_weight=KL_weight,
-                      reduction="mean")
+                      reduction="mean", qz_prediction=qz_prediction)
     return loss
 
 def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title='xy', summary_writer=None):
@@ -123,7 +127,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
             val_sentence_x, val_sentence_y = val_data[0]
             x_in, _, seq_mask_x, seq_len_x = create_batch([val_sentence_x], vocab_src, device)
             y_in, y_out, _, _ = create_batch([val_sentence_y], vocab_tgt, device)
-            z = model.approximate_posterior(x_in, seq_mask_x, seq_len_x).sample()
+            z = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x).sample()
             _, _, att_weights = model(x_in, seq_mask_x, seq_len_x, y_in, z)
             att_weights = att_weights.squeeze().cpu().numpy()
         src_labels = batch_to_sentences(x_in, vocab_src, no_filter=True)[0].split()
@@ -140,7 +144,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
 
         if z is None:
-            qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
+            qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
             if use_prior:
                 #TODO:We are computing qz and it is not need
                 qz=model.prior().expand(qz.mean.size())
@@ -182,7 +186,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
 
         if z is None:
             # For translation we use the approximate posterior mean.
-            qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
+            qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
             if use_prior:
                 #TODO:We are computing qz and it is not need
                 qz=model.prior().expand(qz.mean.size())
@@ -251,7 +255,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
 
             # Infer q(z|x) for this batch.
-            qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x)
+            qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
             pz = model.prior().expand(qz.mean.size())
             total_KL += torch.distributions.kl.kl_divergence(qz, pz).sum().item()
 
