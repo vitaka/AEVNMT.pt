@@ -255,7 +255,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
 
             # Infer q(z|x) for this batch.
-            qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
+            qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
             pz = model.prior().expand(qz.mean.size())
             total_KL += torch.distributions.kl.kl_divergence(qz, pz).sum().item()
 
