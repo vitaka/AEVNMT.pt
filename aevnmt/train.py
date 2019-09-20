@@ -124,6 +124,14 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             if step % hparams.print_every == 0:
                 elapsed = time.time() - tokens_start
                 tokens_per_sec = num_tokens / elapsed if step != 0 else 0
+
+
+
+                #for name, p in model.named_parameters():
+                #    param_norm = p.grad.data.norm(2)
+                #    print("{}: {}".format(name,param_norm))
+
+
                 grad_norm = gradient_norm(model)
                 print(f"({epoch_num}) step {step}: "
                        f"training loss = {total_train_loss/num_sentences:,.2f} -- "

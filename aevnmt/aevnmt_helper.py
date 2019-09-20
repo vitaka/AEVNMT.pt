@@ -24,7 +24,7 @@ def _draw_translations(model, val_dl, vocab_src, vocab_tgt, device, hparams):
             # Keep track of inputs, references and model hypotheses.
             inputs += sentences_x.tolist()
             references += sentences_y.tolist()
-            model_hypotheses += hypothesis.tolist()
+            model_hypotheses += hypothesis
     return inputs, references, model_hypotheses
 
 
@@ -239,7 +239,7 @@ def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams):
             # Keep track of inputs, references and model hypotheses.
             inputs += sentences_x.tolist()
             references += sentences_y.tolist()
-            model_hypotheses += hypothesis.tolist()
+            model_hypotheses += hypothesis
 
     bleu = compute_bleu(model_hypotheses, references, subword_token=hparams.subword_token)
     return bleu, inputs, references, model_hypotheses
