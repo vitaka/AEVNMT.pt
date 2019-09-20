@@ -96,6 +96,7 @@ options = {
                                        " evaluation. If <= 0, evaluation will happen"
                                        " after every epoch.", 3),
     "criterion": (str, "bleu", False, "Criterion for convergence checks ('bleu' or 'likelihood')", 3),
+    "print_gradient_norms": (bool, False, False, "Print norm of gradient for each parameter.", 3),
 
     # Translation hyperparameters.
     "translation_input_file": (str, None, False, "The translation input file,"
