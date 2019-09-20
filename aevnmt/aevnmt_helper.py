@@ -91,7 +91,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
                         shuffle=False, num_workers=4)
     val_dl = BucketingParallelDataLoader(val_dl)
 
-    val_ppl, val_NLL, val_KL = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
+    val_ppl, val_NLL, val_KL, val_KL_pred = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
     val_bleu, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
                                                   device, hparams)
 
@@ -101,6 +101,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
           f" -- validation NLL = {val_NLL:,.2f}"
           f" -- validation BLEU = {val_bleu:.2f}"
           f" -- validation KL = {val_KL:.2f}\n"
+          f" -- validation KL (between inf and pred nets) = {val_KL_pred:.2f}\n"
           f"- Source: {inputs[random_idx]}\n"
           f"- Target: {refs[random_idx]}\n"
           f"- Prediction: {hyps[random_idx]}")
@@ -251,15 +252,19 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
         num_sentences = 0
         log_marginal = 0.
         total_KL = 0.
+        total_KL_prediction = 0.0
         n_samples = 10
         for sentences_x, sentences_y in val_dl:
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
             y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
 
             # Infer q(z|x) for this batch.
-            qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
+            qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
             pz = model.prior().expand(qz.mean.size())
             total_KL += torch.distributions.kl.kl_divergence(qz, pz).sum().item()
+            if model.pred_network != model.inf_network:
+                qzpred=model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
+                total_KL_prediction+=torch.distributions.kl.kl_divergence(qz, qzpred).sum().item()
 
             # Take s importance samples from q(z|x):
             # log int{p(x, y, z) dz} ~= log sum_z{p(x, y, z) / q(z|x)} where z ~ q(z|x)
@@ -299,7 +304,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
 
     val_NLL = -log_marginal
     val_perplexity = np.exp(val_NLL / num_predictions)
-    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences
+    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, total_KL_prediction/num_sentences
 
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
