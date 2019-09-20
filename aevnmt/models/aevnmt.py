@@ -393,7 +393,8 @@ class AEVNMT(nn.Module):
 
         KL_prediction=0
         if qz_prediction is not None:
-            KL_prediction=torch.distributions.kl.kl_divergence(qz.detach(),qz_prediction)
+            qz_copy=torch.distributions.Normal(qz.loc.detach(),qz.scale.detach())
+            KL_prediction=torch.distributions.kl.kl_divergence(qz_copy,qz_prediction)
             KL_prediction=KL_prediction.sum(dim=1)
 
         if free_nats > 0:
