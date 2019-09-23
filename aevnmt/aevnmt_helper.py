@@ -56,7 +56,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    language_model=rnnlm,
                    pad_idx=vocab_tgt[PAD_TOKEN],
                    dropout=hparams.dropout,
-                   tied_embeddings=hparams.tied_embeddings, separate_prediction_network=hparams.separate_prediction_network)
+                   tied_embeddings=hparams.tied_embeddings, separate_prediction_network=hparams.separate_prediction_network, disable_prediction_network=hparams.disable_prediction_network)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -131,8 +131,11 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
         with torch.no_grad():
             val_sentence_x, val_sentence_y = val_data[0]
             x_in, _, seq_mask_x, seq_len_x = create_batch([val_sentence_x], vocab_src, device)
-            y_in, y_out, _, _ = create_batch([val_sentence_y], vocab_tgt, device)
-            z = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x).sample()
+            y_in, y_out, seq_mask_y, seq_len_y = create_batch([val_sentence_y], vocab_tgt, device)
+            if hparams.separate_prediction_network and hparams.disable_prediction_network:
+                z = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y,seq_len_y).sample()
+            else:
+                z = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x).sample()
             _, _, att_weights = model(x_in, seq_mask_x, seq_len_x, y_in, z)
             att_weights = att_weights.squeeze().cpu().numpy()
         src_labels = batch_to_sentences(x_in, vocab_src, no_filter=True)[0].split()
@@ -188,13 +191,13 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
-        if input_sentences_y:
+        if input_sentences_y is not None:
             y_in, _, seq_mask_y, seq_len_y = create_batch(input_sentences_y, vocab_tgt, device)
 
         if z is None:
             # For translation we use the approximate posterior mean.
-            if input_sentences_y:
-                qz = model.approximate_posterior(y_in, seq_mask_y, seq_len_y)
+            if input_sentences_y is not None:
+                qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
             else:
                 qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
             if use_prior:
