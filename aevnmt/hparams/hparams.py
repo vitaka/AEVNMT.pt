@@ -46,6 +46,7 @@ options = {
     "tied_embeddings": (bool, False, False, "Tie the embedding matrix with the output"
                                             " projection.", 1),
     "separate_prediction_network": (bool, False, False, "Train q(z|x,y), translate with r(z|x)", 1),
+    "disable_prediction_network": (bool, False, False, "Do not train r(z|x) or q(z|x), translate with q(x,z)", 1),
 
     # Decoding hyperparameters.
     "max_decoding_length": (int, 50, False, "Maximum decoding length", 2),

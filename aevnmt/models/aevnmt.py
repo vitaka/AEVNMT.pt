@@ -86,7 +86,7 @@ class BilingualInferenceNetwork(nn.Module):
 class AEVNMT(nn.Module):
 
     def __init__(self, tgt_vocab_size, emb_size, latent_size, encoder, decoder, language_model,
-                 pad_idx, dropout, tied_embeddings,separate_prediction_network):
+                 pad_idx, dropout, tied_embeddings,separate_prediction_network, disable_prediction_network):
         super().__init__()
         self.latent_size = latent_size
         self.pad_idx = pad_idx
@@ -112,12 +112,15 @@ class AEVNMT(nn.Module):
                                                 bidirectional=encoder.bidirectional,
                                                 num_enc_layers=encoder.num_layers,
                                                 cell_type=encoder.cell_type)
-            self.pred_network = InferenceNetwork(src_embedder=self.language_model.embedder,
+            if not disable_prediction_network:
+                self.pred_network = InferenceNetwork(src_embedder=self.language_model.embedder,
                                                 hidden_size=encoder.hidden_size,
                                                 latent_size=latent_size,
                                                 bidirectional=encoder.bidirectional,
                                                 num_enc_layers=encoder.num_layers,
                                                 cell_type=encoder.cell_type)
+            else:
+                self.pred_network = self.inf_network
         else:
             self.inf_network = InferenceNetwork(src_embedder=self.language_model.embedder,
                                                 hidden_size=encoder.hidden_size,
