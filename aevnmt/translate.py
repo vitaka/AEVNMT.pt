@@ -126,7 +126,15 @@ class TranslationEngine:
 
         model, _, _, translate_fn = create_model(self.hparams, self.vocab_src, self.vocab_tgt)
         if self.hparams.use_gpu:
-            model.load_state_dict(torch.load(self.model_checkpoint))
+            tdict=torch.load(self.model_checkpoint)
+            newkeys={}
+            for k in tdict:
+                if k.startswith("inf_network."):
+                    predk=k.replace("inf_network.","pred_network.")
+                    if not predk in tdict:
+                        newkeys[predk]=tdict[k]
+            tdict.update(newkeys)
+            model.load_state_dict(tdict)
         else:
             model.load_state_dict(torch.load(self.model_checkpoint, map_location='cpu'))
 
