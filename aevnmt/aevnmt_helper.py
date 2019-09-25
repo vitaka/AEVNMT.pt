@@ -143,13 +143,18 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl}
 
 
-def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False):
+def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None):
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
+        if input_sentences_y:
+            y_in, _, seq_mask_y, seq_len_y = create_batch(input_sentences_y, vocab_tgt, device)
 
         if z is None:
-            qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
+            if input_sentences_y:
+                qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
+            else:
+                qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
             if use_prior:
                 #TODO:We are computing qz and it is not need
                 qz=model.prior().expand(qz.mean.size())
@@ -194,7 +199,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
         if z is None:
             # For translation we use the approximate posterior mean.
             if input_sentences_y:
-                qz = model.approximate_posterior(y_in, seq_mask_y, seq_len_y)
+                qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
             else:
                 qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
             if use_prior:

@@ -138,7 +138,7 @@ class TranslationEngine:
         if self.verbose:
             print("Done loading in %.2f seconds" % (time.time() - t0), file=sys.stderr)
 
-    def translate(self, lines: list ,  stdout=sys.stdout, z_lines=None):
+    def translate(self, lines: list ,  stdout=sys.stdout, z_lines=None, y_lines=None):
         hparams = self.hparams
         if hparams.split_sentences:  # This is a type of pre-processing we do not a post-processing counterpart for
             if hparams.verbose:
@@ -149,8 +149,11 @@ class TranslationEngine:
         if not lines:  # we do not like empty jobs
             return []
         aux_data_generator=None
+        assert not (z_lines is not None and y_lines is not None)
         if z_lines is not None:
             aux_data_generator=({'z':eval(l)} for l in z_lines)
+        elif y_lines is not None:
+            aux_data_generator=({'y': l} for l in y_lines)
         input_data = InputTextDataset(
             generator=(self.pipeline.pre(line) for line in lines),
             max_length=hparams.max_sentence_length,
@@ -172,10 +175,13 @@ class TranslationEngine:
 
             input_zs=None
             if 'z' in input_sentences:
-
                 #For some reason, Torch DataLoader transposed the input zs
                 #and we need to restore to (batch_size, z_dim) size
                 input_zs=torch.stack(input_sentences['z'],dim=0).transpose(1,0)
+
+            input_ys=None
+            if 'y' in input_sentences:
+                input_ys=torch.stack(input_sentences['y'],dim=0) #TODO: check whether we need to transpose something
 
             # Sort the input sentences from long to short.
             input_sentences = np.array(input_sentences['sentence'])
@@ -185,6 +191,9 @@ class TranslationEngine:
             if input_zs is not None:
                 input_zs=input_zs[sort_keys]
 
+            if input_ys is not None:
+                input_ys=input_ys[sort_keys]
+
             t1 = time.time()
             # Translate the sentences using the trained model.
             moreargs={}
@@ -192,6 +201,8 @@ class TranslationEngine:
                 moreargs['deterministic']=False
             if input_zs is not None:
                 moreargs['z']=input_zs.float()
+            if input_ys is not None:
+                moreargs['input_sentences_y']=input_ys
             if hparams.sample_prior_decoding:
                 moreargs['use_prior']=True
             hypotheses,zs = self.translate_fn(
@@ -246,7 +257,7 @@ class TranslationEngine:
         for i, line in enumerate(generator):
             self.translate([line], stdout=stdout)
 
-    def translate_file(self, input_path, output_path=None, reference_path=None, stdout=None, output_z_path=None, input_z_path=None):
+    def translate_file(self, input_path, output_path=None, reference_path=None, stdout=None, output_z_path=None, input_z_path=None, input_y_path=None):
         if output_path is None:
             stdout = sys.stdout
 
@@ -254,9 +265,13 @@ class TranslationEngine:
         if input_z_path is not None:
             with open(input_z_path) as z_f:
                 z_lines=z_f.readlines()
+        y_lines=None
+        if input_y_path is not None:
+            with open(input_y_path) as y_f:
+                y_lines=y_f.readlines()
 
         with open(input_path) as f:  # TODO: optionally segment input file into slices of n lines each
-            translations,zs = self.translate(f.readlines(), stdout=stdout,z_lines=z_lines)
+            translations,zs = self.translate(f.readlines(), stdout=stdout,z_lines=z_lines,y_lines=y_lines)
             # If a reference set is given compute BLEU score.
             if reference_path is not None:
                 ref_sentences = TextDataset(reference_path).data
@@ -316,7 +331,8 @@ def main(hparams=None):
             output_path=hparams.translation_output_file,
             reference_path=hparams.translation_ref_file,
             output_z_path=hparams.z_output_file,
-            input_z_path=hparams.z_input_file
+            input_z_path=hparams.z_input_file,
+            input_y_path=hparams.y_input_file
         )
 
 if __name__ == "__main__":

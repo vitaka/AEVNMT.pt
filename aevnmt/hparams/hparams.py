@@ -46,7 +46,7 @@ options = {
     "tied_embeddings": (bool, False, False, "Tie the embedding matrix with the output"
                                             " projection.", 1),
     "separate_prediction_network": (bool, False, False, "Train q(z|x,y), translate with r(z|x)", 1),
-    "disable_prediction_network": (bool, False, False, "Do not train r(z|x) or q(z|x), translate with q(x,z)", 1),
+    "disable_prediction_network": (bool, False, False, "Do not train r(z|x) or q(z|x), translate with ", 1),
 
     # Decoding hyperparameters.
     "max_decoding_length": (int, 50, False, "Maximum decoding length", 2),
@@ -108,6 +108,7 @@ options = {
                                                 " ignored for training.", 4),
     "z_input_file": (str, None, False, "Z vectors to be used during translation. Skipped posterior approximation,"
                                                 " ignored for training.", 4),
+    "y_input_file": (str, None, False, "TL sentences used for computing q(.)", 4),
     "translation_ref_file": (str, None, False, "The translation references file", 4),
     "verbose": (bool, False, False, "Print logging information", 4),
     "show_raw_output": (bool, False, False, "Prints raw output (tokenized, truecased, BPE-segmented, max-len splitting) to stderr", 4),
