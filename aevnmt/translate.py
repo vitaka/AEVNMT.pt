@@ -161,7 +161,7 @@ class TranslationEngine:
         if z_lines is not None:
             aux_data_generator=({'z':eval(l)} for l in z_lines)
         elif y_lines is not None:
-            aux_data_generator=({'y': l} for l in y_lines)
+            aux_data_generator=({'y': l.rstrip("\n")} for l in y_lines)
         input_data = InputTextDataset(
             generator=(self.pipeline.pre(line) for line in lines),
             max_length=hparams.max_sentence_length,
@@ -189,7 +189,8 @@ class TranslationEngine:
 
             input_ys=None
             if 'y' in input_sentences:
-                input_ys=torch.stack(input_sentences['y'],dim=0) #TODO: check whether we need to transpose something
+                #import pdb; pdb.set_trace()
+                input_ys=input_sentences['y']
 
             # Sort the input sentences from long to short.
             input_sentences = np.array(input_sentences['sentence'])
@@ -200,7 +201,7 @@ class TranslationEngine:
                 input_zs=input_zs[sort_keys]
 
             if input_ys is not None:
-                input_ys=input_ys[sort_keys]
+                input_ys=np.array(input_ys)[sort_keys]
 
             t1 = time.time()
             # Translate the sentences using the trained model.

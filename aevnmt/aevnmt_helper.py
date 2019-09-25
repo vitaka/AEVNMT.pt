@@ -56,7 +56,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    language_model=rnnlm,
                    pad_idx=vocab_tgt[PAD_TOKEN],
                    dropout=hparams.dropout,
-                   tied_embeddings=hparams.tied_embeddings, separate_prediction_network=hparams.separate_prediction_network)
+                   tied_embeddings=hparams.tied_embeddings, separate_prediction_network=hparams.separate_prediction_network,disable_prediction_network=hparams.disable_prediction_network)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -193,12 +193,12 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
-        if input_sentences_y:
+        if input_sentences_y is not None:
             y_in, _, seq_mask_y, seq_len_y = create_batch(input_sentences_y, vocab_tgt, device)
 
         if z is None:
             # For translation we use the approximate posterior mean.
-            if input_sentences_y:
+            if input_sentences_y is not None:
                 qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
             else:
                 qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
