@@ -11,11 +11,11 @@ from aevnmt.data import MemMappedCorpus, MemMappedParallelCorpus
 from aevnmt.data import Vocabulary, ParallelDataset, TextDataset, remove_subword_tokens
 from aevnmt.components import BahdanauAttention, BahdanauDecoder, LuongAttention, LuongDecoder
 
-def load_data(hparams, vocab_src, vocab_tgt, use_memmap=False):
+def load_data(hparams, vocab_src, vocab_tgt, use_memmap=False, val_tgt_suffix=""):
     train_src = f"{hparams.training_prefix}.{hparams.src}"
     train_tgt = f"{hparams.training_prefix}.{hparams.tgt}"
     val_src = f"{hparams.validation_prefix}.{hparams.src}"
-    val_tgt = f"{hparams.validation_prefix}.{hparams.tgt}"
+    val_tgt = f"{hparams.validation_prefix}.{hparams.tgt}{val_tgt_suffix}"
     opt_data = dict()
 
     if use_memmap:
@@ -144,9 +144,12 @@ def parameter_count(param_generator):
 
 def gradient_norm(model):
     total_norm = 0.
-    for p in model.parameters():
-        param_norm = p.grad.data.norm(2)
-        total_norm += param_norm.item() ** 2
+    for n,p in model.named_parameters():
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+        else:
+            print("WARNING: parameter {} has no gradient".format(n))
     total_norm = np.sqrt(total_norm)
     return total_norm
 

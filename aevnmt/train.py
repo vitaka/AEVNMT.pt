@@ -4,6 +4,7 @@ import time
 
 import aevnmt.nmt_helper as nmt_helper
 import aevnmt.aevnmt_helper as aevnmt_helper
+import aevnmt.vae_helper as vae_helper
 
 from torch.utils.data import DataLoader
 from torch import autograd
@@ -32,6 +33,11 @@ def create_model(hparams, vocab_src, vocab_tgt):
         train_fn = aevnmt_helper.train_step
         validate_fn = aevnmt_helper.validate
         translate_fn = aevnmt_helper.translate
+    elif hparams.model_type == "vae":
+        model = vae_helper.create_model(hparams, vocab_src, vocab_tgt)
+        train_fn = vae_helper.train_step
+        validate_fn = vae_helper.validate
+        translate_fn = vae_helper.translate
     else:
         raise Exception(f"Unknown model_type: {hparams.model_type}")
 
@@ -193,7 +199,7 @@ def main():
         vocab_src.print_statistics()
         print("\n==== Target vocabulary")
         vocab_tgt.print_statistics()
-    train_data, val_data, _ = load_data(hparams, vocab_src=vocab_src, vocab_tgt=vocab_tgt)
+    train_data, val_data, _ = load_data(hparams, vocab_src=vocab_src, vocab_tgt=vocab_tgt, val_tgt_suffix='.paraphrase' if hparams.paraphrasing_bleu else "")
     print("\n==== Data")
     print(f"Training data: {len(train_data):,} bilingual sentence pairs")
     print(f"Validation data: {len(val_data):,} bilingual sentence pairs")
