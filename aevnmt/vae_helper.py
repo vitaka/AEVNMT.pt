@@ -39,7 +39,8 @@ def create_model(hparams, vocab_src, vocab_tgt):
                   dropout=hparams.dropout,
                   num_layers=hparams.num_dec_layers,
                   cell_type=hparams.cell_type,
-                  tied_embeddings=hparams.tied_embeddings)
+                  tied_embeddings=hparams.tied_embeddings,
+                  add_input_size= hparams.latent_size if hparams.feed_z else 0)
 
     model = VAE(   emb_size=hparams.emb_size,
                    latent_size=hparams.latent_size,
@@ -49,6 +50,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    cell_type=hparams.cell_type,
                    language_model=rnnlm,
                    max_pool=hparams.max_pooling_states,
+                   feed_z=hparams.feed_z,
                    pad_idx=vocab_tgt[PAD_TOKEN],
                    dropout=hparams.dropout)
     return model
@@ -145,7 +147,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
             else:
                 qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
             if use_prior:
-                #TODO:We are computing qz and it is not need
+                #TODO:We are computing qz and it is not needed
                 qz=model.prior().expand(qz.mean.size())
             z = qz.mean if deterministic else qz.sample()
 
@@ -156,13 +158,13 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                                            model.lm_generate, hidden,
                                            None, None,
                                            seq_mask_x, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
-                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p)
+                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None)
         elif hparams.beam_width <= 1:
             raw_hypothesis = greedy_decode(model.language_model, model.src_embed,
                                            model.lm_generate, hidden,
                                            None, None,
                                            seq_mask_x, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
-                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length)
+                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None)
         else:
             raw_hypothesis = beam_search(model.language_model, model.src_embed, model.lm_generate,
                                          vocab_src.size(), hidden, None,
@@ -170,7 +172,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                                          vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
                                          vocab_src[PAD_TOKEN], hparams.beam_width,
                                          hparams.length_penalty_factor,
-                                         hparams.max_decoding_length,hparams.n_best)
+                                         hparams.max_decoding_length,hparams.n_best,z if hparams.feed_z else None)
 
     hypothesis_l=[]
     for n in range(raw_hypothesis.size(1)):
@@ -259,7 +261,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
         log_marginal = 0.
         total_KL = 0.
         total_KL_prediction = 0.0
-        n_samples = 10
+        #n_samples = 10
+        n_samples = 1
         for sentences_x, sentences_y in val_dl:
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
             y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
