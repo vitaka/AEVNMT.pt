@@ -32,8 +32,6 @@ class InferenceNetwork(nn.Module):
         x_embed = self.src_embedder(x).detach()
         encoder_outputs, _ = self.encoder(x_embed, seq_len_x) #(B, T, hidden_size)
 
-        import pdb; pdb.set_trace()
-
         if self.max_pool:
             avg_encoder_output = encoder_outputs.max(dim=1)[0]
         else:
@@ -49,8 +47,10 @@ class InferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,pad_idx, dropout):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout):
         super().__init__()
+
+        self.feed_z=feed_z
         self.latent_size = latent_size
         self.pad_idx = pad_idx
 
@@ -134,7 +134,7 @@ class VAE(nn.Module):
         :param z: a sample of the latent variable
         """
         hidden = tile_rnn_hidden(self.lm_init_layer(z), self.language_model.rnn)
-        return self.language_model(x, hidden=hidden)
+        return self.language_model(x, hidden=hidden, z=z if self.feed_z else None)
 
     def forward(self, x, seq_mask_x, seq_len_x, y, z):
 

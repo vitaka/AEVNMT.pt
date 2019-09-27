@@ -39,7 +39,7 @@ def tile(x, count, dim=0):
 
 def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, encoder_outputs,
                 encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, beam_width, alpha,
-                max_len,n_best=1):
+                max_len,n_best=1,z=None):
     """
     Beam search with size beam_width. Follows OpenNMT-py implementation.
     In each decoding step, find the k most likely partial hypotheses.
@@ -102,7 +102,7 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
             if luong_decoding: hidden = (hidden, prev_pre_output)
             prev_y = tgt_embed_fn(prev_y)
             if lm_decoding:
-                hidden,pre_output = decoder.step(prev_y, hidden)
+                hidden,pre_output = decoder.step(prev_y, hidden,z)
             else:
                 pre_output, hidden, _ = decoder.step(prev_y, hidden, seq_mask_x, encoder_outputs)
             logits = generator_fn(pre_output)

@@ -48,6 +48,7 @@ options = {
     "separate_prediction_network": (bool, False, False, "Train q(z|x,y), translate with r(z|x)", 1),
     "disable_prediction_network": (bool, False, False, "Do not train r(z|x) or q(z|x), translate with ", 1),
     "max_pooling_states":(bool, False, False, "Max-pool encoder states instead of averaging them", 1),
+    "feed_z":(bool, False, False, "Concatenate z to the previous word embeddings at each timestep", 1),
 
     # Decoding hyperparameters.
     "max_decoding_length": (int, 50, False, "Maximum decoding length", 2),

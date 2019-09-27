@@ -3,7 +3,7 @@ from torch.distributions.categorical import Categorical
 
 
 def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len, greedy=False,sampling_nucleus_p=1.0):
+                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len, greedy=False,sampling_nucleus_p=1.0, z=None):
     """
     :param decoder: an instance of aevnmt.components.LuongDecoder or
                     aevnmt.components.BahdanauDecoder that has been
@@ -33,7 +33,7 @@ def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_output
     for t in range(max_len):
         prev_y = tgt_embed_fn(prev_y)
         if lm_decoding:
-            hidden, pre_output = decoder.step(prev_y, hidden)
+            hidden, pre_output = decoder.step(prev_y, hidden,z)
         else:
             pre_output, hidden, _ = decoder.step(prev_y, hidden, seq_mask_x, encoder_outputs)
         logits = generator_fn(pre_output)
@@ -70,18 +70,18 @@ def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_output
 
 
 def greedy_decode(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len):
+                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,z=None):
     decoder.eval()
     with torch.no_grad():
         d = ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                      encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len, greedy=True)
+                      encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len, greedy=True,z=z)
     # TODO: prepare other functions to expect a dictionary
     return d['sample'][:,None,:]
 
 def sampling_decode(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,nucleus_p=1.0):
+                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,nucleus_p=1.0,z=None):
     decoder.eval()
     with torch.no_grad():
         d = ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                      encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,greedy=False,sampling_nucleus_p=nucleus_p)
+                      encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,greedy=False,sampling_nucleus_p=nucleus_p,z=z)
     return d['sample'][:,None,:]
