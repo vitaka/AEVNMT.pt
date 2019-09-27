@@ -48,6 +48,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    num_layers=hparams.num_enc_layers,
                    cell_type=hparams.cell_type,
                    language_model=rnnlm,
+                   max_pool=hparams.max_pooling_states,
                    pad_idx=vocab_tgt[PAD_TOKEN],
                    dropout=hparams.dropout)
     return model
