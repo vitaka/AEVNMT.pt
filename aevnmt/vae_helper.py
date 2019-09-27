@@ -92,7 +92,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
         val_bleu_orig, inputs_orig, refs_orig, hyps_orig = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,                                          device, hparams, compare_with_original=True)
         val_bleu=val_bleu_ref-val_bleu_orig
     else:
-        val_bleu_orig=None
+        val_bleu_orig=0
         val_bleu=val_bleu_ref
 
 
@@ -104,7 +104,6 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
           f" -- validation BLEU original = {val_bleu_orig:.2f}"
           f" -- validation BLEU = {val_bleu:.2f}"
           f" -- validation KL = {val_KL:.2f}\n"
-          f" -- validation KL (between inf and pred nets) = {val_KL_pred:.2f}\n"
           f"- Source: {inputs[random_idx]}\n"
           f"- Target: {refs[random_idx]}\n"
           f"- Prediction: {hyps[random_idx]}")
