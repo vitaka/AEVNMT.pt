@@ -9,12 +9,14 @@ from itertools import chain
 
 class InferenceNetwork(nn.Module):
 
-    def __init__(self, src_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type):
+    def __init__(self, src_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type,max_pool):
         """
         :param src_embedder: uses this embedder, but detaches its output from the graph as to not compute
                              gradients for it.
         """
         super().__init__()
+        self.max_pool=max_pool
+
         self.src_embedder = src_embedder
         emb_size = src_embedder.embedding_dim
         self.encoder = RNNEncoder(emb_size=emb_size,
@@ -28,8 +30,15 @@ class InferenceNetwork(nn.Module):
 
     def forward(self, x, seq_mask_x, seq_len_x):
         x_embed = self.src_embedder(x).detach()
-        encoder_outputs, _ = self.encoder(x_embed, seq_len_x)
-        avg_encoder_output = (encoder_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_outputs)).sum(dim=1)
+        encoder_outputs, _ = self.encoder(x_embed, seq_len_x) #(B, T, hidden_size)
+
+        import pdb; pdb.set_trace()
+
+        if self.max_pool:
+            avg_encoder_output = encoder_outputs.max(dim=1)[0]
+        else:
+            avg_encoder_output = (encoder_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_outputs)).sum(dim=1)
+
         return self.normal_layer(avg_encoder_output)
 
     def parameters(self, recurse=True):
@@ -40,7 +49,7 @@ class InferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, pad_idx, dropout):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,pad_idx, dropout):
         super().__init__()
         self.latent_size = latent_size
         self.pad_idx = pad_idx
@@ -57,7 +66,8 @@ class VAE(nn.Module):
                                                 latent_size=latent_size,
                                                 bidirectional=bidirectional,
                                                 num_enc_layers=num_layers,
-                                                cell_type=cell_type)
+                                                cell_type=cell_type,
+                                                max_pool=max_pool)
         self.pred_network=self.inf_network
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
