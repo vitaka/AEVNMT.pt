@@ -42,6 +42,18 @@ def create_model(hparams, vocab_src, vocab_tgt):
                   tied_embeddings=hparams.tied_embeddings,
                   add_input_size= hparams.latent_size if hparams.feed_z else 0)
 
+    rnnlm_tl=None
+    if hparams.vae_tl_lm:
+        rnnlm_tl = RNNLM(vocab_size=vocab_tgt.size(),
+                      emb_size=hparams.emb_size,
+                      hidden_size=hparams.hidden_size,
+                      pad_idx=vocab_tgt[PAD_TOKEN],
+                      dropout=hparams.dropout,
+                      num_layers=hparams.num_dec_layers,
+                      cell_type=hparams.cell_type,
+                      tied_embeddings=hparams.tied_embeddings,
+                      add_input_size= hparams.latent_size if hparams.feed_z else 0)
+
     model = VAE(   emb_size=hparams.emb_size,
                    latent_size=hparams.latent_size,
                    hidden_size=hparams.hidden_size,
@@ -52,7 +64,8 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    max_pool=hparams.max_pooling_states,
                    feed_z=hparams.feed_z,
                    pad_idx=vocab_tgt[PAD_TOKEN],
-                   dropout=hparams.dropout)
+                   dropout=hparams.dropout,
+                   language_model_tl=rnnlm_tl)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -63,7 +76,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     z = qz.rsample()
 
     # Compute the translation and language model logits.
-    tm_logits, lm_logits, _ = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, z)
+    tm_logits, lm_logits, _, lm_logits_tl = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, z)
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
@@ -76,7 +89,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     loss = model.loss(tm_logits, lm_logits, y_out, x_out, qz,
                       free_nats=hparams.KL_free_nats,
                       KL_weight=KL_weight,
-                      reduction="mean", qz_prediction=None)
+                      reduction="mean", qz_prediction=None,lm_logits_tl=lm_logits_tl)
     return loss
 
 def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title='xy', summary_writer=None):
@@ -88,15 +101,20 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     val_dl = BucketingParallelDataLoader(val_dl)
 
     val_ppl, val_NLL, val_KL, val_KL_pred = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
-    #We are not validating BLEU at the moment
+
     val_bleu_ref, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
                                                   device, hparams)
     if hparams.paraphrasing_bleu:
-        val_bleu_orig, inputs_orig, refs_orig, hyps_orig = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,                                          device, hparams, compare_with_original=True)
+        val_bleu_orig, inputs_orig, refs_orig, hyps_orig = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams, compare_with_original=True)
         val_bleu=val_bleu_ref-val_bleu_orig
+        val_bleu_tl=0.0
     else:
+        if hparams.vae_tl_lm:
+            val_bleu_tl, inputs_tl, refs_tl, hyps_tl = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams, compare_with_original=True,)
+        else:
+            val_bleu_tl=0
         val_bleu_orig=0
-        val_bleu=val_bleu_ref
+        val_bleu=val_bleu_ref+val_bleu_tl
 
 
     random_idx = np.random.choice(len(inputs))
@@ -105,6 +123,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
           f" -- validation NLL = {val_NLL:,.2f}"
           f" -- validation BLEU reference= {val_bleu_ref:.2f}"
           f" -- validation BLEU original = {val_bleu_orig:.2f}"
+          f" -- validation BLEU TL = {val_bleu_tl:.2f}"
           f" -- validation BLEU = {val_bleu:.2f}"
           f" -- validation KL = {val_KL:.2f}\n"
           f"- Source: {inputs[random_idx]}\n"
@@ -133,7 +152,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl}
 
 
-def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None):
+def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None, use_tl_lm=False):
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
@@ -150,32 +169,39 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                 qz=model.prior().expand(qz.mean.size())
             z = qz.mean if deterministic else qz.sample()
 
-        hidden = model.init_lm(z)
+        if use_tl_lm:
+            hidden=model.init_lm_tl(z)
+        else:
+            hidden = model.init_lm(z)
+
+        language_model=model.language_model_tl if use_tl_lm else model.language_model
+        embed=model.tgt_embed if use_tl_lm else model.src_embed
+        vocab=vocab_tgt if use_tl_lm else vocab_src
 
         if hparams.sample_decoding:
-            raw_hypothesis = sampling_decode(model.language_model, model.src_embed,
+            raw_hypothesis = sampling_decode(language_model, embed,
                                            model.lm_generate, hidden,
                                            None, None,
-                                           seq_mask_x, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
-                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None)
+                                           seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                           vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None)
         elif hparams.beam_width <= 1:
-            raw_hypothesis = greedy_decode(model.language_model, model.src_embed,
+            raw_hypothesis = greedy_decode(language_model, embed,
                                            model.lm_generate, hidden,
                                            None, None,
-                                           seq_mask_x, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
-                                           vocab_src[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None)
+                                           seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                           vocab[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None)
         else:
-            raw_hypothesis = beam_search(model.language_model, model.src_embed, model.lm_generate,
-                                         vocab_src.size(), hidden, None,
+            raw_hypothesis = beam_search(language_model, embed, model.lm_generate,
+                                         vocab.size(), hidden, None,
                                          None, seq_mask_x,
-                                         vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
-                                         vocab_src[PAD_TOKEN], hparams.beam_width,
+                                         vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                         vocab[PAD_TOKEN], hparams.beam_width,
                                          hparams.length_penalty_factor,
                                          hparams.max_decoding_length,hparams.n_best,z if hparams.feed_z else None)
 
     hypothesis_l=[]
     for n in range(raw_hypothesis.size(1)):
-        hypothesis_l.append(batch_to_sentences(raw_hypothesis[:,n,:], vocab_src))
+        hypothesis_l.append(batch_to_sentences(raw_hypothesis[:,n,:], vocab))
 
     return np.array(hypothesis_l).transpose(1, 0),z
 
@@ -230,7 +256,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
 
     return np.array(hypothesis_l).transpose(1, 0),z
 
-def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams, compare_with_original=False):
+def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams, compare_with_original=False, generate_tl=False):
     model.eval()
     with torch.no_grad():
         inputs = []
@@ -238,12 +264,12 @@ def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams, compare
         model_hypotheses = []
         for sentences_x, sentences_y in val_dl:
             input_sentences_y=None
-            hypothesis_nbest,zs = re_sample(model, sentences_x, vocab_src, vocab_tgt, device, hparams,input_sentences_y=input_sentences_y)
+            hypothesis_nbest,zs = re_sample(model, sentences_x, vocab_src, vocab_tgt, device, hparams,input_sentences_y=input_sentences_y,use_tl_lm=generate_tl)
             hypothesis=[ t_nbest[0] for t_nbest in hypothesis_nbest]
 
             # Keep track of inputs, references and model hypotheses.
             inputs += sentences_x.tolist()
-            if compare_with_original:
+            if compare_with_original or generate_tl:
                 references += sentences_y.tolist()
             else:
                 references += sentences_x.tolist()
@@ -280,19 +306,25 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 z = qz.sample()
 
                 # Compute the logits according to this sample of z.
-                _, lm_logits, _ = model(x_in, seq_mask_x, seq_len_x, y_in, z)
+                _, lm_logits, _ , lm_logits_tl= model(x_in, seq_mask_x, seq_len_x, y_in, z)
 
                 # Compute log P(x|z_s)
                 log_lm_prob = F.log_softmax(lm_logits, dim=-1)
                 log_lm_prob = torch.gather(log_lm_prob, 2, x_out.unsqueeze(-1)).squeeze()
                 log_lm_prob = (seq_mask_x.type_as(log_lm_prob) * log_lm_prob).sum(dim=1)
 
+                log_lm_prob_tl=0.0
+                if lm_logits_tl is not None:
+                    log_lm_prob_tl = F.log_softmax(lm_logits_tl, dim=-1)
+                    log_lm_prob_tl = torch.gather(log_lm_prob_tl, 2, y_out.unsqueeze(-1)).squeeze()
+                    log_lm_prob_tl = (seq_mask_y.type_as(log_lm_prob_tl) * log_lm_prob_tl).sum(dim=1)
+
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
                 log_pz = pz.log_prob(z).sum(dim=1) # [B, latent_size] -> [B]
                 log_qz = qz.log_prob(z).sum(dim=1)
 
                 # Estimate the importance weighted estimate of (the log of) P(x, y)
-                batch_log_marginals[s] = log_lm_prob + log_pz - log_qz
+                batch_log_marginals[s] = log_lm_prob + log_lm_prob_tl + log_pz - log_qz
 
             # Average over all samples.
             batch_log_marginal = torch.logsumexp(batch_log_marginals, dim=0) - \
@@ -300,6 +332,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             log_marginal += batch_log_marginal.sum().item() # [B] -> []
             num_sentences += batch_size
             num_predictions += (seq_len_x.sum() ).item()
+            if lm_logits_tl is not None:
+                num_predictions += (seq_len_y.sum() ).item()
 
     val_NLL = -log_marginal
     val_perplexity = np.exp(val_NLL / num_predictions)

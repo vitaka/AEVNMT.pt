@@ -69,7 +69,7 @@ class BilingualInferenceNetwork(nn.Module):
 
     def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y):
         x_embed = self.src_embedder(x).detach()
-        y_embed = self.src_embedder(y).detach()
+        y_embed = self.tgt_embedder(y).detach()
         encoder_src_outputs, _ = self.src_encoder(x_embed, seq_len_x)
         encoder_tgt_outputs, _ = self.tgt_encoder(y_embed, seq_len_y)
         avg_encoder_src_output = (encoder_src_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_src_outputs)).sum(dim=1)
