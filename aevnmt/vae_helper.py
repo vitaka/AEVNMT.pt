@@ -110,7 +110,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
         val_bleu_tl=0.0
     else:
         if hparams.vae_tl_lm:
-            val_bleu_tl, inputs_tl, refs_tl, hyps_tl = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams, compare_with_original=True,)
+            val_bleu_tl, inputs_tl, refs_tl, hyps_tl = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams, compare_with_original=True,generate_tl=True)
         else:
             val_bleu_tl=0
         val_bleu_orig=0
@@ -129,6 +129,10 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
           f"- Source: {inputs[random_idx]}\n"
           f"- Target: {refs[random_idx]}\n"
           f"- Prediction: {hyps[random_idx]}")
+    if hparams.vae_tl_lm:
+          print( f"- Source: {inputs_tl[random_idx]}\n"
+          f"- Target: {refs_tl[random_idx]}\n"
+          f"- Prediction: {hyps_tl[random_idx]}")
 
     if hparams.draw_translations > 0:
         random_idx = np.random.choice(len(inputs))
@@ -156,11 +160,11 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
-        if input_sentences_y:
+        if input_sentences_y is not None:
             y_in, _, seq_mask_y, seq_len_y = create_batch(input_sentences_y, vocab_tgt, device)
 
         if z is None:
-            if input_sentences_y:
+            if input_sentences_y is not None:
                 qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
             else:
                 qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
