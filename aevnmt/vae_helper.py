@@ -263,7 +263,10 @@ def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams, compare
         references = []
         model_hypotheses = []
         for sentences_x, sentences_y in val_dl:
-            input_sentences_y=None
+            if getattr(model,'language_model_tl',None) is not None:
+                input_sentences_y=sentences_y
+            else:
+                input_sentences_y=None
             hypothesis_nbest,zs = re_sample(model, sentences_x, vocab_src, vocab_tgt, device, hparams,input_sentences_y=input_sentences_y,use_tl_lm=generate_tl)
             hypothesis=[ t_nbest[0] for t_nbest in hypothesis_nbest]
 
