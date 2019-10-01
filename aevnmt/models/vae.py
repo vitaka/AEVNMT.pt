@@ -99,7 +99,7 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,bow=False):
         super().__init__()
 
         self.feed_z=feed_z
@@ -137,6 +137,17 @@ class VAE(nn.Module):
                                                 cell_type=cell_type,
                                                 max_pool=max_pool)
         self.pred_network=self.inf_network
+
+        self.bow_output_layer=None
+        self.bow_output_layer_tl=None
+
+        if bow:
+            self.bow_output_layer = nn.Linear(latent_size,
+                                              self.language_model.embedder.num_embeddings, bias=True)
+            if self.language_model_tl is not None:
+                self.bow_output_layer_tl = nn.Linear(latent_size,
+                                                  self.language_model_tl.embedder.num_embeddings, bias=True)
+
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
         # they will be moved to the appropriate device on which the model is run.
@@ -242,7 +253,18 @@ class VAE(nn.Module):
         else:
             lm_logits_tl=None
 
-        return None, lm_logits, None,lm_logits_tl
+        #TODO: think about dropout too
+        if self.bow_output_layer is not None:
+            bow_logits=self.bow_output_layer(z)
+        else:
+            bow_logits=None
+
+        if self.bow_output_layer_tl is not None:
+            bow_logits_tl=self.bow_output_layer_tl(z)
+        else:
+            bow_logits_tl=None
+
+        return None, lm_logits, None,lm_logits_tl,bow_logits, bow_logits_tl
 
     def compute_conditionals(self, x_in, seq_mask_x, seq_len_x, x_out, y_in, y_out, z):
         """
@@ -303,7 +325,7 @@ class VAE(nn.Module):
 
     #TODO: remove tm_logits? target_y?
     def loss(self, tm_logits, lm_logits, targets_y, targets_x, qz, free_nats=0.,
-             KL_weight=1., reduction="mean", qz_prediction=None, lm_logits_tl=None):
+             KL_weight=1., reduction="mean", qz_prediction=None, lm_logits_tl=None, bow_logits=None, bow_logits_tl=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -317,6 +339,8 @@ class VAE(nn.Module):
         :param free_nats: KL = min(free_nats, KL)
         :param KL_weight: weight to multiply the KL with, applied after free_nats
         :param reduction: what reduction to apply, none ([B]), mean ([]) or sum ([])
+        :param bow_logits: [B,vocab_size]
+        :param bow_logits_tl: [B,vocab_size_tl]
         """
 
         # Compute the language model categorical loss.
@@ -325,7 +349,27 @@ class VAE(nn.Module):
         if lm_logits_tl is not None:
             lm_loss_tl=self.language_model_tl.loss(lm_logits_tl,targets_y,reduction="none")
         else:
-            lm_loss_tl=0
+            lm_loss_tl=0.0
+
+        bow_loss=torch.zeros_like(lm_loss)
+        if bow_logits is not None:
+            bow_logprobs=-F.log_softmax(bow_logits,-1)
+            bsz=bow_logits.size(0)
+            for i in range(bsz):
+                voc=list(set(targets_x[i])-set([self.language_model.pad_idx]))
+                for v in voc:
+                    bow_loss[i]+=bow_logprobs[i][v]
+
+
+        bow_loss_tl=torch.zeros_like(lm_loss)
+        if bow_logits_tl is not None:
+            bow_logprobs_tl=-F.log_softmax(bow_logits_tl,-1)
+            bsz=bow_logits_tl.size(0)
+            for i in range(bsz):
+                voc=list(set(targets_y[i])-set([self.language_model_tl.pad_idx]))
+                for v in voc:
+                    bow_loss_tl[i]+=bow_logprobs_tl[i][v]
+
 
         # Compute the KL divergence between the distribution used to sample z, and the prior
         # distribution.
@@ -333,6 +377,7 @@ class VAE(nn.Module):
 
         # The loss is the negative ELBO.
         lm_log_likelihood = -lm_loss - lm_loss_tl
+        bow_log_likelihood = - bow_loss - bow_loss_tl
 
         KL = torch.distributions.kl.kl_divergence(qz, pz)
         raw_KL = KL.sum(dim=1)
@@ -341,11 +386,12 @@ class VAE(nn.Module):
         if free_nats > 0:
             KL = torch.clamp(KL, min=free_nats)
         KL *= KL_weight
-        elbo = lm_log_likelihood - KL
+        elbo = lm_log_likelihood + bow_log_likelihood  - KL
         loss = -elbo
 
         out_dict = {
             'lm_log_likelihood': lm_log_likelihood,
+            'bow_log_likelihood': bow_log_likelihood,
             'KL': KL,
             'raw_KL': raw_KL
         }

@@ -50,6 +50,7 @@ options = {
     "max_pooling_states":(bool, False, False, "Max-pool encoder states instead of averaging them", 1),
     "feed_z":(bool, False, False, "Concatenate z to the previous word embeddings at each timestep", 1),
     "vae_tl_lm":(bool, False, False, "VAE shares z to produce 2 outputs", 1),
+    "bow_loss":(bool, False, False, "Add bag-of-words terms to the loss", 1),
 
     # Decoding hyperparameters.
     "max_decoding_length": (int, 50, False, "Maximum decoding length", 2),
