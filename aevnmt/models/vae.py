@@ -351,7 +351,6 @@ class VAE(nn.Module):
         else:
             lm_loss_tl=0.0
 
-        import pdb; pdb.set_trace()
         bow_loss=torch.zeros_like(lm_loss)
         if bow_logits is not None:
             bow_logprobs=-F.log_softmax(bow_logits,-1)
