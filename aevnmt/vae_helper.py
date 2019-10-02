@@ -331,21 +331,26 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
 
                 log_bow_prob=torch.zeros_like(log_lm_prob)
                 log_bow_prob_tl=torch.zeros_like(log_lm_prob)
+
                 if bow_logits is not None:
                     bow_logprobs=F.log_softmax(bow_logits,-1)
                     bsz=bow_logits.size(0)
+                    unique_repeated=torch.unique(x_out * seq_mask_x.type_as(x_out),dim=-1)
                     for i in range(bsz):
-                        voc=list(  set(x_out[i] * seq_mask_x[i].type_as(x_out[i]) )-set([0]))
-                        for v in voc:
-                            log_bow_prob[i]+=bow_logprobs[i][v]
+                        bow=torch.unique_consecutive(unique_repeated[i])
+                        bow_mask=( bow != 0)
+                        bow=bow.masked_select(bow_mask)
+                        log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] )
 
                 if bow_logits_tl is not None:
                     bow_logprobs_tl=F.log_softmax(bow_logits_tl,-1)
                     bsz=bow_logits_tl.size(0)
+                    unique_repeated=torch.unique(y_out * seq_mask_y.type_as(y_out),dim=-1)
                     for i in range(bsz):
-                        voc=list(  set(y_out[i] * seq_mask_y[i].type_as(y_out[i]) ) - set([0])  )
-                        for v in voc:
-                            log_bow_prob_tl[i]+=bow_logprobs_tl[i][v]
+                        bow=torch.unique_consecutive(unique_repeated[i])
+                        bow_mask=( bow != 0)
+                        bow=bow.masked_select(bow_mask)
+                        log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )
 
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
                 log_pz = pz.log_prob(z).sum(dim=1) # [B, latent_size] -> [B]

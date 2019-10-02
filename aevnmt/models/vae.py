@@ -355,20 +355,23 @@ class VAE(nn.Module):
         if bow_logits is not None:
             bow_logprobs=-F.log_softmax(bow_logits,-1)
             bsz=bow_logits.size(0)
+            unique_repeated=torch.unique(targets_x,dim=-1)
             for i in range(bsz):
-                voc=list(set(targets_x[i])-set([self.language_model.pad_idx]))
-                for v in voc:
-                    bow_loss[i]+=bow_logprobs[i][v]
-
+                bow=torch.unique_consecutive(unique_repeated[i])
+                bow_mask=( bow != self.language_model.pad_idx)
+                bow=bow.masked_select(bow_mask)
+                bow_loss[i]=torch.sum( bow_logprobs[i][bow] )
 
         bow_loss_tl=torch.zeros_like(lm_loss)
         if bow_logits_tl is not None:
             bow_logprobs_tl=-F.log_softmax(bow_logits_tl,-1)
             bsz=bow_logits_tl.size(0)
+            unique_repeated=torch.unique(targets_y,dim=-1)
             for i in range(bsz):
-                voc=list(set(targets_y[i])-set([self.language_model_tl.pad_idx]))
-                for v in voc:
-                    bow_loss_tl[i]+=bow_logprobs_tl[i][v]
+                bow=torch.unique_consecutive(unique_repeated[i])
+                bow_mask=( bow != self.language_model_tl.pad_idx)
+                bow=bow.masked_select(bow_mask)
+                bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )
 
 
         # Compute the KL divergence between the distribution used to sample z, and the prior
