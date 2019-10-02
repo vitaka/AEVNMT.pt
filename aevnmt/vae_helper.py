@@ -308,6 +308,27 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             # log int{p(x, y, z) dz} ~= log sum_z{p(x, y, z) / q(z|x)} where z ~ q(z|x)
             batch_size = x_in.size(0)
             batch_log_marginals = torch.zeros(n_samples, batch_size)
+
+            #Compute bow for each sentence
+            bow_indexes=[]
+            if model.bow_output_layer is not None:
+                unique_repeated=torch.unique(x_out * seq_mask_x.type_as(x_out),dim=-1)
+                for i in range(batch_size):
+                    bow=torch.unique_consecutive(unique_repeated[i])
+                    bow_mask=( bow != 0)
+                    bow=bow.masked_select(bow_mask)
+                    bow_indexes.append(bow)
+
+            bow_indexes_tl=[]
+            if model.bow_output_layer_tl is not None:
+                unique_repeated=torch.unique(y_out * seq_mask_y.type_as(y_out),dim=-1)
+                for i in range(batch_size):
+                    bow=torch.unique_consecutive(unique_repeated[i])
+                    bow_mask=( bow != 0)
+                    bow=bow.masked_select(bow_mask)
+                    bow_indexes_tl.append(bow)
+
+
             for s in range(n_samples):
 
                 #import pdb; pdb.set_trace()
@@ -335,21 +356,15 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 if bow_logits is not None:
                     bow_logprobs=F.log_softmax(bow_logits,-1)
                     bsz=bow_logits.size(0)
-                    unique_repeated=torch.unique(x_out * seq_mask_x.type_as(x_out),dim=-1)
                     for i in range(bsz):
-                        bow=torch.unique_consecutive(unique_repeated[i])
-                        bow_mask=( bow != 0)
-                        bow=bow.masked_select(bow_mask)
+                        bow=bow_indexes[i]
                         log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] )
 
                 if bow_logits_tl is not None:
                     bow_logprobs_tl=F.log_softmax(bow_logits_tl,-1)
                     bsz=bow_logits_tl.size(0)
-                    unique_repeated=torch.unique(y_out * seq_mask_y.type_as(y_out),dim=-1)
                     for i in range(bsz):
-                        bow=torch.unique_consecutive(unique_repeated[i])
-                        bow_mask=( bow != 0)
-                        bow=bow.masked_select(bow_mask)
+                        bow=bow_indexes_tl[i]
                         log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )
 
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
@@ -367,6 +382,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             num_predictions += (seq_len_x.sum() ).item()
             if lm_logits_tl is not None:
                 num_predictions += (seq_len_y.sum() ).item()
+            num_predictions+=sum(len(bi) for bi in bow_indexes)
+            num_predictions+=sum(len(bi) for bi in bow_indexes_tl)
 
     val_NLL = -log_marginal
     val_perplexity = np.exp(val_NLL / num_predictions)
