@@ -351,13 +351,13 @@ class VAE(nn.Module):
         else:
             lm_loss_tl=0.0
 
+        import pdb; pdb.set_trace()
         bow_loss=torch.zeros_like(lm_loss)
         if bow_logits is not None:
             bow_logprobs=-F.log_softmax(bow_logits,-1)
             bsz=bow_logits.size(0)
-            unique_repeated=torch.unique(targets_x,dim=-1)
             for i in range(bsz):
-                bow=torch.unique_consecutive(unique_repeated[i])
+                bow=torch.unique(targets_x[i])
                 bow_mask=( bow != self.language_model.pad_idx)
                 bow=bow.masked_select(bow_mask)
                 bow_loss[i]=torch.sum( bow_logprobs[i][bow] )
@@ -366,9 +366,8 @@ class VAE(nn.Module):
         if bow_logits_tl is not None:
             bow_logprobs_tl=-F.log_softmax(bow_logits_tl,-1)
             bsz=bow_logits_tl.size(0)
-            unique_repeated=torch.unique(targets_y,dim=-1)
             for i in range(bsz):
-                bow=torch.unique_consecutive(unique_repeated[i])
+                bow=torch.unique(targets_y)
                 bow_mask=( bow != self.language_model_tl.pad_idx)
                 bow=bow.masked_select(bow_mask)
                 bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )

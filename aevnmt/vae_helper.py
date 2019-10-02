@@ -312,18 +312,16 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             #Compute bow for each sentence
             bow_indexes=[]
             if model.bow_output_layer is not None:
-                unique_repeated=torch.unique(x_out * seq_mask_x.type_as(x_out),dim=-1)
                 for i in range(batch_size):
-                    bow=torch.unique_consecutive(unique_repeated[i])
+                    bow=torch.unique(x_out[i] * seq_mask_x[i].type_as(x_out[i]))
                     bow_mask=( bow != 0)
                     bow=bow.masked_select(bow_mask)
                     bow_indexes.append(bow)
 
             bow_indexes_tl=[]
             if model.bow_output_layer_tl is not None:
-                unique_repeated=torch.unique(y_out * seq_mask_y.type_as(y_out),dim=-1)
                 for i in range(batch_size):
-                    bow=torch.unique_consecutive(unique_repeated[i])
+                    bow=torch.unique(y_out[i] * seq_mask_y[i].type_as(y_out[i]),dim=-1)
                     bow_mask=( bow != 0)
                     bow=bow.masked_select(bow_mask)
                     bow_indexes_tl.append(bow)
