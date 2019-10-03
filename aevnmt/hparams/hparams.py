@@ -51,6 +51,8 @@ options = {
     "feed_z":(bool, False, False, "Concatenate z to the previous word embeddings at each timestep", 1),
     "vae_tl_lm":(bool, False, False, "VAE shares z to produce 2 outputs", 1),
     "bow_loss":(bool, False, False, "Add bag-of-words terms to the loss", 1),
+    "disable_KL":(bool, False, False, "Disable KL divergence", 1),
+    "forget_decoder":(bool, False, False, "Re-initialize decoder when loading existing model", 1),
 
     # Decoding hyperparameters.
     "max_decoding_length": (int, 50, False, "Maximum decoding length", 2),

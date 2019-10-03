@@ -66,7 +66,8 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    pad_idx=vocab_tgt[PAD_TOKEN],
                    dropout=hparams.dropout,
                    language_model_tl=rnnlm_tl,
-                   bow=hparams.bow_loss)
+                   bow=hparams.bow_loss,
+                   disable_KL=hparams.disable_KL)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -295,6 +296,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
         total_KL = 0.
         total_KL_prediction = 0.0
         n_samples = 10
+        if model.disable_KL:
+            n_samples=1
         for sentences_x, sentences_y in val_dl:
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
             y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
@@ -366,8 +369,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                         log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )
 
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
-                log_pz = pz.log_prob(z).sum(dim=1) # [B, latent_size] -> [B]
-                log_qz = qz.log_prob(z).sum(dim=1)
+                log_pz = pz.log_prob(z).sum(dim=1) if not model.disable_KL else 0.0 # [B, latent_size] -> [B]
+                log_qz = qz.log_prob(z).sum(dim=1) if not model.disable_KL else 0.0
 
                 # Estimate the importance weighted estimate of (the log of) P(x, y)
                 batch_log_marginals[s] = log_lm_prob + log_lm_prob_tl + log_bow_prob + log_bow_prob_tl + log_pz - log_qz

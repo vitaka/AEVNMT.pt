@@ -99,8 +99,10 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,bow=False):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,bow=False, disable_KL=False):
         super().__init__()
+
+        self.disable_KL=disable_KL
 
         self.feed_z=feed_z
         self.latent_size = latent_size
@@ -380,13 +382,19 @@ class VAE(nn.Module):
         lm_log_likelihood = -lm_loss - lm_loss_tl
         bow_log_likelihood = - bow_loss - bow_loss_tl
 
-        KL = torch.distributions.kl.kl_divergence(qz, pz)
-        raw_KL = KL.sum(dim=1)
-        KL = KL.sum(dim=1)
+        KL=0.0
+        raw_KL=0.0
 
-        if free_nats > 0:
-            KL = torch.clamp(KL, min=free_nats)
-        KL *= KL_weight
+        if not self.disable_KL:
+
+            KL = torch.distributions.kl.kl_divergence(qz, pz)
+            raw_KL = KL.sum(dim=1)
+            KL = KL.sum(dim=1)
+
+            if free_nats > 0:
+                KL = torch.clamp(KL, min=free_nats)
+            KL *= KL_weight
+        
         elbo = lm_log_likelihood + bow_log_likelihood  - KL
         loss = -elbo
 
