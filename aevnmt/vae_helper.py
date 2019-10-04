@@ -355,19 +355,20 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 log_bow_prob_tl=torch.zeros_like(log_lm_prob)
 
                 if bow_logits is not None:
-                    bow_logprobs=F.log_softmax(bow_logits,-1)
+                    bow_logprobs=F.logsigmoid(bow_logits,-1)
                     bsz=bow_logits.size(0)
                     for i in range(bsz):
                         bow=bow_indexes[i]
                         log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] )
 
                 if bow_logits_tl is not None:
-                    bow_logprobs_tl=F.log_softmax(bow_logits_tl,-1)
+                    bow_logprobs_tl=F.logsigmoid(bow_logits_tl,-1)
                     bsz=bow_logits_tl.size(0)
                     for i in range(bsz):
                         bow=bow_indexes_tl[i]
                         log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )
 
+                #Importance sampling: as if we were integratting over prior probabilities
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
                 log_pz = pz.log_prob(z).sum(dim=1) if not model.disable_KL else 0.0 # [B, latent_size] -> [B]
                 log_qz = qz.log_prob(z).sum(dim=1) if not model.disable_KL else 0.0
