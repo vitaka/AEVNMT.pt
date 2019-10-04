@@ -355,14 +355,14 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 log_bow_prob_tl=torch.zeros_like(log_lm_prob)
 
                 if bow_logits is not None:
-                    bow_logprobs=F.logsigmoid(bow_logits,-1)
+                    bow_logprobs=F.logsigmoid(bow_logits)
                     bsz=bow_logits.size(0)
                     for i in range(bsz):
                         bow=bow_indexes[i]
                         log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] )
 
                 if bow_logits_tl is not None:
-                    bow_logprobs_tl=F.logsigmoid(bow_logits_tl,-1)
+                    bow_logprobs_tl=F.logsigmoid(bow_logits_tl)
                     bsz=bow_logits_tl.size(0)
                     for i in range(bsz):
                         bow=bow_indexes_tl[i]
