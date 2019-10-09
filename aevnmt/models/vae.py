@@ -9,7 +9,7 @@ from itertools import chain
 
 class InferenceNetwork(nn.Module):
 
-    def __init__(self, src_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type,max_pool):
+    def __init__(self, src_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type,max_pool,logvar):
         """
         :param src_embedder: uses this embedder, but detaches its output from the graph as to not compute
                              gradients for it.
@@ -26,7 +26,7 @@ class InferenceNetwork(nn.Module):
                                   num_layers=num_enc_layers,
                                   cell_type=cell_type)
         encoding_size = hidden_size if not bidirectional else hidden_size * 2
-        self.normal_layer = NormalLayer(encoding_size, hidden_size, latent_size)
+        self.normal_layer = NormalLayer(encoding_size, hidden_size, latent_size,logvar)
 
     def forward(self, x, seq_mask_x, seq_len_x):
         x_embed = self.src_embedder(x).detach()
@@ -47,7 +47,7 @@ class InferenceNetwork(nn.Module):
 
 class BilingualInferenceNetwork(nn.Module):
 
-    def __init__(self, src_embedder, tgt_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type, max_pool):
+    def __init__(self, src_embedder, tgt_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type, max_pool,logvar):
         """
         :param src_embedder: uses this embedder, but detaches its output from the graph as to not compute
                              gradients for it.
@@ -74,7 +74,7 @@ class BilingualInferenceNetwork(nn.Module):
                                   num_layers=num_enc_layers,
                                   cell_type=cell_type)
         encoding_size = hidden_size if not bidirectional else hidden_size * 2
-        self.normal_layer = NormalLayer(encoding_size*2, hidden_size, latent_size)
+        self.normal_layer = NormalLayer(encoding_size*2, hidden_size, latent_size,logvar)
 
     def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y):
         x_embed = self.src_embedder(x).detach()
@@ -99,10 +99,11 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,bow=False, disable_KL=False):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,bow=False, disable_KL=False,logvar=False):
         super().__init__()
 
         self.disable_KL=disable_KL
+        self.logvar=logvar
 
         self.feed_z=feed_z
         self.latent_size = latent_size
@@ -129,7 +130,7 @@ class VAE(nn.Module):
                                                 bidirectional=bidirectional,
                                                 num_enc_layers=num_layers,
                                                 cell_type=cell_type,
-                                                max_pool=max_pool)
+                                                max_pool=max_pool,logvar=logvar)
         else:
             self.inf_network = InferenceNetwork(src_embedder=self.language_model.embedder,
                                                 hidden_size=hidden_size,
@@ -137,7 +138,7 @@ class VAE(nn.Module):
                                                 bidirectional=bidirectional,
                                                 num_enc_layers=num_layers,
                                                 cell_type=cell_type,
-                                                max_pool=max_pool)
+                                                max_pool=max_pool,logvar=logvar)
         self.pred_network=self.inf_network
 
         self.bow_output_layer=None

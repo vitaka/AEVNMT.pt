@@ -67,7 +67,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    dropout=hparams.dropout,
                    language_model_tl=rnnlm_tl,
                    bow=hparams.bow_loss,
-                   disable_KL=hparams.disable_KL)
+                   disable_KL=hparams.disable_KL, logvar=hparams.logvar)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
