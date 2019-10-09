@@ -230,6 +230,10 @@ def main():
                          hparams.emb_init_scale, verbose=True)
     else:
         print(f"\nRestoring model parameters from {hparams.model_checkpoint}...")
+        if hparams.forget_decoder:
+            #Initialize model first, as there are parts we are not loading
+            initialize_model(model, vocab_tgt[PAD_TOKEN], hparams.cell_type,
+                             hparams.emb_init_scale, verbose=True)
         model.load_state_dict(   {k: v for k, v in torch.load( hparams.model_checkpoint).items() if (k.split(".")[0] not in ['language_model','language_model_tl','lm_init_layer','lm_init_layer_tl','bow_output_layer','bow_output_layer_tl'] ) or not hparams.forget_decoder} , strict=not hparams.forget_decoder  )
 
     # Create the output directories.
