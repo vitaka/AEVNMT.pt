@@ -234,7 +234,15 @@ def main():
             #Initialize model first, as there are parts we are not loading
             initialize_model(model, vocab_tgt[PAD_TOKEN], hparams.cell_type,
                              hparams.emb_init_scale, verbose=True)
-        model.load_state_dict(   {k: v for k, v in torch.load( hparams.model_checkpoint).items() if (k.split(".")[0] not in ['language_model','language_model_tl','lm_init_layer','lm_init_layer_tl','bow_output_layer','bow_output_layer_tl'] ) or not hparams.forget_decoder} , strict=not hparams.forget_decoder  )
+        loadedpre=torch.load( hparams.model_checkpoint)
+        forget_keys=set()
+        if hparams.forget_decoder:
+            for k in loadedpre:
+                if k.split(".")[0] in ['language_model','language_model_tl','lm_init_layer','lm_init_layer_tl','bow_output_layer','bow_output_layer_tl']:
+                    forget_keys.add(k)
+                if k.startswith("inf_network.normal_layer.scale_layer"):
+                    forget_keys.add(k)
+        model.load_state_dict( { k:v for k,v in loadedpre.items() if k not in forget_keys }, strict=not hparams.forget_decoder )
 
     # Create the output directories.
     out_dir = Path(hparams.output_dir)
