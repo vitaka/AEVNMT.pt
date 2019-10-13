@@ -102,7 +102,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
         # Train for 1 epoch.
         for sentences_x, sentences_y in bucketing_dl:
             model.train()
-
+ 
             # Perform a forward pass through the model
             x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
                 sentences_x, vocab_src, device,
@@ -240,9 +240,11 @@ def main():
             for k in loadedpre:
                 if k.split(".")[0] in ['language_model','language_model_tl','lm_init_layer','lm_init_layer_tl','bow_output_layer','bow_output_layer_tl']:
                     forget_keys.add(k)
-                if k.startswith("inf_network.normal_layer.scale_layer"):
+                if k.startswith("inf_network.normal_layer.scale_layer") or k.startswith("pred_network.normal_layer.scale_layer"):
                     forget_keys.add(k)
-        model.load_state_dict( { k:v for k,v in loadedpre.items() if k not in forget_keys }, strict=not hparams.forget_decoder )
+        loadeddict={ k:v for k,v in loadedpre.items() if k not in forget_keys }
+        print("Loading parameters {}".format(sorted(loadeddict.keys())))
+        model.load_state_dict( loadeddict, strict=not hparams.forget_decoder )
 
     # Create the output directories.
     out_dir = Path(hparams.output_dir)

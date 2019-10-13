@@ -387,7 +387,6 @@ class VAE(nn.Module):
         raw_KL=0.0
 
         if not self.disable_KL:
-
             KL = torch.distributions.kl.kl_divergence(qz, pz)
             raw_KL = KL.sum(dim=1)
             KL = KL.sum(dim=1)
