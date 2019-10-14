@@ -71,10 +71,10 @@ def create_model(hparams, vocab_src, vocab_tgt):
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
-               hparams, step):
+               hparams, step,add_qz_scale=0.0):
 
     # Use q(z|x,y) for training to sample a z.
-    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y)
+    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y, add_qz_scale)
     if model.disable_KL:
         z=qz.mean
     else:

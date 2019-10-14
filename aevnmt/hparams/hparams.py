@@ -54,6 +54,7 @@ options = {
     "disable_KL":(bool, False, False, "Disable KL divergence", 1),
     "logvar":(bool, False, False, "Encoder produces mean and logarithm of variance, instead of mean and stdev", 1),
     "forget_decoder":(bool, False, False, "Re-initialize decoder when loading existing model", 1),
+    "avoid_zero_scale_during":(int,-1,False,"Add a small amount to qz scale during this number of steps at the begining of training",1),
 
     # Decoding hyperparameters.
     "max_decoding_length": (int, 50, False, "Maximum decoding length", 2),

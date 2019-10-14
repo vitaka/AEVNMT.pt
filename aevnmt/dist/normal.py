@@ -14,11 +14,11 @@ class NormalLayer(nn.Module):
                                        nn.Linear(hidden_size, latent_size),
                                        nn.Softplus())
 
-    def forward(self, input_features):
+    def forward(self, input_features,add_qz_scale=0.0):
         loc, scale = self.compute_parameters(input_features)
         if self.logvar:
             scale=scale.mul(0.5).exp()
-        return torchdist.normal.Normal(loc=loc, scale=scale)
+        return torchdist.normal.Normal(loc=loc, scale=scale+add_qz_scale)
 
     def compute_parameters(self, input_features):
         loc = self.loc_layer(input_features)

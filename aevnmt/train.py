@@ -112,10 +112,11 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                 word_dropout=hparams.word_dropout)
             #with autograd.detect_anomaly():
             loss = train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
-                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, hparams, step)["loss"]
+                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0)["loss"]
 
             # Backpropagate and update gradients.
             loss.backward()
+
             if hparams.max_gradient_norm > 0:
                 # TODO: do we need separate norms?
                 nn.utils.clip_grad_norm_(model.parameters(),

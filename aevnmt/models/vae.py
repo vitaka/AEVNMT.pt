@@ -28,7 +28,7 @@ class InferenceNetwork(nn.Module):
         encoding_size = hidden_size if not bidirectional else hidden_size * 2
         self.normal_layer = NormalLayer(encoding_size, hidden_size, latent_size,logvar)
 
-    def forward(self, x, seq_mask_x, seq_len_x):
+    def forward(self, x, seq_mask_x, seq_len_x,add_qz_scale=0.0):
         x_embed = self.src_embedder(x).detach()
         encoder_outputs, _ = self.encoder(x_embed, seq_len_x) #(B, T, hidden_size)
 
@@ -37,7 +37,7 @@ class InferenceNetwork(nn.Module):
         else:
             avg_encoder_output = (encoder_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_outputs)).sum(dim=1)
 
-        return self.normal_layer(avg_encoder_output)
+        return self.normal_layer(avg_encoder_output,add_qz_scale)
 
     def parameters(self, recurse=True):
         return chain(self.encoder.parameters(recurse=recurse), self.normal_layer.parameters(recurse=recurse))
@@ -76,7 +76,7 @@ class BilingualInferenceNetwork(nn.Module):
         encoding_size = hidden_size if not bidirectional else hidden_size * 2
         self.normal_layer = NormalLayer(encoding_size*2, hidden_size, latent_size,logvar)
 
-    def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y):
+    def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y,add_qz_scale=0.0):
         x_embed = self.src_embedder(x).detach()
         y_embed = self.tgt_embedder(y).detach()
         encoder_src_outputs, _ = self.src_encoder(x_embed, seq_len_x)
@@ -87,7 +87,7 @@ class BilingualInferenceNetwork(nn.Module):
         else:
             avg_encoder_src_output = (encoder_src_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_src_outputs)).sum(dim=1)
             avg_encoder_tgt_output = (encoder_tgt_outputs * seq_mask_y.unsqueeze(-1).type_as(encoder_tgt_outputs)).sum(dim=1)
-        return self.normal_layer(torch.cat((avg_encoder_src_output,avg_encoder_tgt_output), dim=-1))
+        return self.normal_layer(torch.cat((avg_encoder_src_output,avg_encoder_tgt_output), dim=-1),add_qz_scale)
 
     def parameters(self, recurse=True):
         return chain(self.src_encoder.parameters(recurse=recurse), self.tgt_encoder.parameters(recurse=recurse), self.normal_layer.parameters(recurse=recurse))
@@ -174,15 +174,15 @@ class VAE(nn.Module):
         return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters )
 
 
-    def approximate_posterior(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y):
+    def approximate_posterior(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y,add_qz_scale=0.0):
         """
         Returns an approximate posterior distribution q(z|x).
         """
 
         if self.language_model_tl is not None:
-            return self.inf_network(x, seq_mask_x, seq_len_x,y, seq_mask_y, seq_len_y)
+            return self.inf_network(x, seq_mask_x, seq_len_x,y, seq_mask_y, seq_len_y,add_qz_scale)
         else:
-            return self.inf_network(x, seq_mask_x, seq_len_x)
+            return self.inf_network(x, seq_mask_x, seq_len_x,add_qz_scale)
 
     def approximate_posterior_prediction(self, x, seq_mask_x, seq_len_x):
         """
@@ -386,8 +386,13 @@ class VAE(nn.Module):
         KL=0.0
         raw_KL=0.0
 
+        qz_in=qz
         if not self.disable_KL:
-            KL = torch.distributions.kl.kl_divergence(qz, pz)
+            #print("qz.scale: {}".format(qz_in.scale))
+            #print("pz.scale: {}".format(pz.scale))
+            #var_ratio = (pz.scale / qz_in.scale).pow(2)
+            #print("var_ratio: {}".format(var_ratio))
+            KL = torch.distributions.kl.kl_divergence(qz_in, pz)
             raw_KL = KL.sum(dim=1)
             KL = KL.sum(dim=1)
 
