@@ -75,7 +75,10 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
 
     # Use q(z|x,y) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y)
-    z = qz.rsample()
+    if model.disable_KL:
+        z=qz.mean
+    else:
+        z = qz.rsample()
 
     # Compute the translation and language model logits.
     tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, z)
@@ -335,7 +338,10 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 #import pdb; pdb.set_trace()
 
                 # z ~ q(z|x)
-                z = qz.sample()
+                if model.disable_KL:
+                    z=qz.mean
+                else:
+                    z = qz.sample()
 
                 # Compute the logits according to this sample of z.
                 _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl = model(x_in, seq_mask_x, seq_len_x, y_in, z)
