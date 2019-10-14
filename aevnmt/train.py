@@ -148,7 +148,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                        f"gradient norm = {grad_norm:.2f}")
                 summary_writer.add_scalar("train/loss",
                                           total_train_loss/num_sentences, step)
-                summary_writer.add_scalar("train/z",
+                summary_writer.add_histogram("train/z",
                                           train_result["z"], step)
                 num_tokens = 0
                 tokens_start = time.time()
