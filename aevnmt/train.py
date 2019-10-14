@@ -102,7 +102,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
         # Train for 1 epoch.
         for sentences_x, sentences_y in bucketing_dl:
             model.train()
- 
+
             # Perform a forward pass through the model
             x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
                 sentences_x, vocab_src, device,
@@ -111,9 +111,9 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                 sentences_y, vocab_tgt, device,
                 word_dropout=hparams.word_dropout)
             #with autograd.detect_anomaly():
-            loss = train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
-                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0)["loss"]
-
+            train_result = train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
+                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0)
+            loss=train_result["loss"]
             # Backpropagate and update gradients.
             loss.backward()
 
@@ -148,6 +148,8 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                        f"gradient norm = {grad_norm:.2f}")
                 summary_writer.add_scalar("train/loss",
                                           total_train_loss/num_sentences, step)
+                summary_writer.add_scalar("train/z",
+                                          train_result["z"], step)
                 num_tokens = 0
                 tokens_start = time.time()
                 total_train_loss = 0.
