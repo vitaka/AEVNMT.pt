@@ -100,6 +100,7 @@ options = {
     "dropout": (float, 0., False, "The amount of dropout.", 3),
     "word_dropout": (float, 0., False, "Fraction of input words to drop.", 3),
     "KL_free_nats": (float, 0., False, "KL = min(KL_free_nats, KL)", 3),
+    "KL_free_nats_per_dimension": (bool, False, False, "Applies free nats independently for each dimension", 3),
     "KL_annealing_steps": (int, 0, False, "Amount of KL annealing steps (0...1)", 3),
     "evaluate_every": (int, -1, False, "The number of batches after which to run"
                                        " evaluation. If <= 0, evaluation will happen"

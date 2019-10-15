@@ -92,7 +92,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
 
     # Compute the loss.
     loss = model.loss(tm_logits, lm_logits, y_out, x_out, qz,
-                      free_nats=hparams.KL_free_nats,
+                      free_nats=hparams.KL_free_nats,free_nats_per_dimension=hparams.KL_free_nats_per_dimension,
                       KL_weight=KL_weight,
                       reduction="mean", qz_prediction=None,lm_logits_tl=lm_logits_tl,bow_logits=bow_logits, bow_logits_tl=bow_logits_tl)
     loss["z"]=z

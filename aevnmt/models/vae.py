@@ -327,7 +327,7 @@ class VAE(nn.Module):
 
 
     #TODO: remove tm_logits? target_y?
-    def loss(self, tm_logits, lm_logits, targets_y, targets_x, qz, free_nats=0.,
+    def loss(self, tm_logits, lm_logits, targets_y, targets_x, qz, free_nats=0.,free_nats_per_dimension=False,
              KL_weight=1., reduction="mean", qz_prediction=None, lm_logits_tl=None, bow_logits=None, bow_logits_tl=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
@@ -394,9 +394,11 @@ class VAE(nn.Module):
             #print("var_ratio: {}".format(var_ratio))
             KL = torch.distributions.kl.kl_divergence(qz_in, pz)
             raw_KL = KL.sum(dim=1)
-            KL = KL.sum(dim=1)
 
-            if free_nats > 0:
+            if free_nats > 0 and free_nats_per_dimension:
+                KL = torch.clamp(KL, min=free_nats/KL.size(1))
+            KL = KL.sum(dim=1)
+            if free_nats > 0 and not free_nats_per_dimension:
                 KL = torch.clamp(KL, min=free_nats)
             KL *= KL_weight
 
