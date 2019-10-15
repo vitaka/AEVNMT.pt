@@ -2,7 +2,7 @@ import numpy as np
 
 class BucketingParallelDataLoader:
 
-    def __init__(self, dataloader, n=20, length_fn=lambda seq: len(seq.split())):
+    def __init__(self, dataloader, n=20, length_fn=lambda seq: len(seq.split()),add_reverse=False):
         """
         Sorts by source sentence length descending (nice for RNN encoders),
         then by target length.
@@ -11,17 +11,29 @@ class BucketingParallelDataLoader:
         self.length_fn = length_fn
         self.it = iter(dataloader)
         self.n = n
+        self.add_reverse=add_reverse
+        
         self._sort_next_batches()
         self.batch_size = dataloader.batch_size
+
+
 
     def _sort_next_batches(self):
         count = 0
         src_batches = []
         tgt_batches = []
+        src_rev_batches= []
+        tgt_rev_batches= []
         for batch in self.it:
-            src_batch, tgt_batch = batch
+            if self.add_reverse:
+                src_batch, tgt_batch, src_rev_batch, tgt_rev_batch = batch
+            else:
+                src_batch, tgt_batch = batch
             src_batches += src_batch
             tgt_batches += tgt_batch
+            if self.add_reverse:
+                src_rev_batches+=src_rev_batch
+                tgt_rev_batches+=tgt_rev_batch
             count += 1
             if count == self.n:
                 break
@@ -41,6 +53,14 @@ class BucketingParallelDataLoader:
 
         self.sorted_src_batches = src_batches[sort_keys]
         self.sorted_tgt_batches = tgt_batches[sort_keys]
+
+        if self.add_reverse:
+            src_rev_batches = np.array(src_rev_batches)
+            tgt_rev_batches = np.array(tgt_rev_batches)
+
+            self.sorted_src_rev_batches = src_rev_batches[sort_keys]
+            self.sorted_tgt_rev_batches = tgt_rev_batches[sort_keys]
+
         self.idx = 0
 
     def __iter__(self):
@@ -52,7 +72,11 @@ class BucketingParallelDataLoader:
         start_idx = self.idx
         end_idx = self.idx + self.batch_size
         self.idx += self.batch_size
-        return (self.sorted_src_batches[start_idx:end_idx], 
+        if self.add_reverse:
+            return (self.sorted_src_batches[start_idx:end_idx],
+                self.sorted_tgt_batches[start_idx:end_idx],self.sorted_src_rev_batches[start_idx:end_idx],self.sorted_tgt_rev_batches[start_idx:end_idx])
+        else:
+            return (self.sorted_src_batches[start_idx:end_idx],
                 self.sorted_tgt_batches[start_idx:end_idx])
 
 class BucketingTextDataLoader:

@@ -63,7 +63,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
     # Create a dataloader that buckets the batches.
     dl = DataLoader(training_data, batch_size=hparams.batch_size,
                     shuffle=True, num_workers=4)
-    bucketing_dl = BucketingParallelDataLoader(dl)
+    bucketing_dl = BucketingParallelDataLoader(dl,add_reverse=hparams.reverse_lm)
 
     # Save the best model based on development BLEU.
     ckpt = CheckPoint(model_dir=out_dir/"model", metrics=['bleu', 'likelihood'])
@@ -100,7 +100,11 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
     while (epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience):
 
         # Train for 1 epoch.
-        for sentences_x, sentences_y in bucketing_dl:
+        for sentences_tuple in bucketing_dl:
+            if hparams.reverse_lm:
+                sentences_x, sentences_y, sentences_x_rev, sentences_y_rev =sentences_tuple
+            else:
+                sentences_x, sentences_y =sentences_tuple
             model.train()
 
             # Perform a forward pass through the model
@@ -110,9 +114,21 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in = create_noisy_batch(
                 sentences_y, vocab_tgt, device,
                 word_dropout=hparams.word_dropout)
+
+            if hparams.reverse_lm:
+                x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in = create_noisy_batch(
+                    sentences_x_rev, vocab_src, device,
+                    word_dropout=hparams.word_dropout)
+                y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in = create_noisy_batch(
+                    sentences_y_rev, vocab_tgt, device,
+                    word_dropout=hparams.word_dropout)
+            else:
+                x_rev_in= x_rev_out= seq_mask_x_rev= seq_len_x_rev= noisy_x_rev_in =None
+                y_rev_in= y_rev_out= seq_mask_y_rev= seq_len_y_rev= noisy_y_rev_in=None
+
             #with autograd.detect_anomaly():
             train_result = train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
-                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0)
+                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0)
             loss=train_result["loss"]
             # Backpropagate and update gradients.
             loss.backward()
@@ -125,7 +141,8 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             if "inf_z" in optimizers: optimizers["inf_z"].step()
 
             # Update statistics.
-            num_tokens += (seq_len_x.sum() + seq_len_y.sum()).item()
+            num_tokens += (seq_len_x.sum() + seq_len_y.sum()).item() *(2 if hparams.reverse_lm else 1)
+
             num_sentences += x_in.size(0)
             total_train_loss += loss.item() * x_in.size(0)
 
@@ -202,7 +219,7 @@ def main():
         vocab_src.print_statistics()
         print("\n==== Target vocabulary")
         vocab_tgt.print_statistics()
-    train_data, val_data, _ = load_data(hparams, vocab_src=vocab_src, vocab_tgt=vocab_tgt, val_tgt_suffix='.paraphrase' if hparams.paraphrasing_bleu else "")
+    train_data, val_data, opt_data = load_data(hparams, vocab_src=vocab_src, vocab_tgt=vocab_tgt, val_tgt_suffix='.paraphrase' if hparams.paraphrasing_bleu else "")
     print("\n==== Data")
     print(f"Training data: {len(train_data):,} bilingual sentence pairs")
     print(f"Validation data: {len(val_data):,} bilingual sentence pairs")

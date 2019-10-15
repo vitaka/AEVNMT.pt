@@ -19,6 +19,8 @@ def load_data(hparams, vocab_src, vocab_tgt, use_memmap=False, val_tgt_suffix=""
     opt_data = dict()
 
     if use_memmap:
+        if add_reverse:
+            raise NotImplementedError
         print('Memory mapping bilingual data')
         training_data = MemMappedParallelCorpus(
             [train_src, train_tgt],
@@ -47,12 +49,13 @@ def load_data(hparams, vocab_src, vocab_tgt, use_memmap=False, val_tgt_suffix=""
                 max_length=hparams.max_sentence_length
             )
     else:
-        training_data = ParallelDataset(train_src, train_tgt, max_length=hparams.max_sentence_length)
-        val_data = ParallelDataset(val_src, val_tgt, max_length=-1)
+        training_data = ParallelDataset(train_src, train_tgt, max_length=hparams.max_sentence_length,add_reverse= hparams.reverse_lm)
+        val_data = ParallelDataset(val_src, val_tgt, max_length=-1,add_reverse= hparams.reverse_lm)
         if hparams.mono_src:
             opt_data['mono_src'] = TextDataset(hparams.mono_src, max_length=hparams.max_sentence_length)
         if hparams.mono_tgt:
             opt_data['mono_tgt'] = TextDataset(hparams.mono_tgt, max_length=hparams.max_sentence_length)
+
 
     return training_data, val_data, opt_data
 
