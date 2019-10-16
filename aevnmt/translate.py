@@ -14,7 +14,7 @@ from aevnmt.data.textprocessing import Tokenizer, Detokenizer
 from aevnmt.data.textprocessing import Lowercaser, Truecaser, Recaser
 from aevnmt.data.textprocessing import WordSegmenter, WordDesegmenter
 
-from aevnmt import aevnmt_helper
+from aevnmt import aevnmt_helper, vae_helper
 
 from torch.utils.data import DataLoader
 from pathlib import Path
@@ -141,7 +141,12 @@ class TranslationEngine:
         self.model = model.to(self.device)
         self.translate_fn = translate_fn
         if self.hparams.re_generate_sl:
-            self.translate_fn=aevnmt_helper.re_sample
+            if hparams.model_type == "aevnmt":
+                self.translate_fn=aevnmt_helper.re_sample
+            elif hparams.model_type == "vae":
+                self.translate_fn=vae_helper.re_sample
+            else:
+                raise NotImplementedError
         self.model.eval()
         if self.verbose:
             print("Done loading in %.2f seconds" % (time.time() - t0), file=sys.stderr)
