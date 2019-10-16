@@ -147,11 +147,11 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
-        if input_sentences_y:
+        if input_sentences_y is not None:
             y_in, _, seq_mask_y, seq_len_y = create_batch(input_sentences_y, vocab_tgt, device)
 
         if z is None:
-            if input_sentences_y:
+            if input_sentences_y is not None:
                 qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
             else:
                 qz = model.approximate_posterior_prediction(x_in, seq_mask_x, seq_len_x)
