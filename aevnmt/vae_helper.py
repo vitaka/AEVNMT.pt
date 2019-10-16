@@ -297,7 +297,9 @@ def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams, compare
         inputs = []
         references = []
         model_hypotheses = []
-        for sentences_x, sentences_y in val_dl:
+        for sentences_tuple in val_dl:
+            sentences_x=sentences_tuple[0]
+            sentences_y=sentences_tuple[1]
             if getattr(model,'language_model_tl',None) is not None:
                 input_sentences_y=sentences_y
             else:
