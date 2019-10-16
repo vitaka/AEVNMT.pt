@@ -141,9 +141,9 @@ class TranslationEngine:
         self.model = model.to(self.device)
         self.translate_fn = translate_fn
         if self.hparams.re_generate_sl:
-            if hparams.model_type == "aevnmt":
+            if self.hparams.model_type == "aevnmt":
                 self.translate_fn=aevnmt_helper.re_sample
-            elif hparams.model_type == "vae":
+            elif self.hparams.model_type == "vae":
                 self.translate_fn=vae_helper.re_sample
             else:
                 raise NotImplementedError
