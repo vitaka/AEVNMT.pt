@@ -50,6 +50,7 @@ options = {
     "max_pooling_states":(bool, False, False, "Max-pool encoder states instead of averaging them", 1),
     "feed_z":(bool, False, False, "Concatenate z to the previous word embeddings at each timestep", 1),
     "vae_tl_lm":(bool, False, False, "VAE shares z to produce 2 outputs", 1),
+    "cross_language_dropout":(float, 0.0, False, "Probability of dropping out one language and computing loss on the other", 1),
     "bow_loss":(bool, False, False, "Add bag-of-words terms to the loss", 1),
     "reverse_lm":(bool, False, False, "z is also used to produce sentences with a reverse LM", 1),
     "disable_KL":(bool, False, False, "Disable KL divergence", 1),
@@ -67,6 +68,7 @@ options = {
     "sample_decoding_nucleus_p": (float, 1.0, False, "Sampling from the top words that account for this probability mass.", 2),
     "sample_posterior_decoding": (bool, False, False, "When decoding with AEVNMT, sample from the approximate posterior instead of taking the mean.", 2),
     "sample_prior_decoding": (bool, False, False, "When decoding with AEVNMT, sample from the Gaussian prior and ignore the posterior.", 2),
+    "generate_homotopies": (bool, False, False, "Sample twice (either from posterior or from prior, and genrate 10 homotopies by greedy search) ", 2),
     "n_best": (int, 1, False, "Produce n-best translations with beam search.", 2),
     "re_generate_sl": (bool, False, False, "When decoding, generate SL sentences with the LM instead of translations.", 2),
 

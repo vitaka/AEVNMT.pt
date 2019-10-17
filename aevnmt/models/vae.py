@@ -76,7 +76,7 @@ class BilingualInferenceNetwork(nn.Module):
         encoding_size = hidden_size if not bidirectional else hidden_size * 2
         self.normal_layer = NormalLayer(encoding_size*2, hidden_size, latent_size,logvar)
 
-    def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y,add_qz_scale=0.0):
+    def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y,add_qz_scale=0.0,disable_x=False,disable_y=False):
         x_embed = self.src_embedder(x).detach()
         y_embed = self.tgt_embedder(y).detach()
         encoder_src_outputs, _ = self.src_encoder(x_embed, seq_len_x)
@@ -87,6 +87,10 @@ class BilingualInferenceNetwork(nn.Module):
         else:
             avg_encoder_src_output = (encoder_src_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_src_outputs)).sum(dim=1)
             avg_encoder_tgt_output = (encoder_tgt_outputs * seq_mask_y.unsqueeze(-1).type_as(encoder_tgt_outputs)).sum(dim=1)
+        if disable_x:
+            avg_encoder_src_output=torch.zeros_like(avg_encoder_src_output)
+        if disable_y:
+            avg_encoder_tgt_output=torch.zeros_like(avg_encoder_tgt_output)
         return self.normal_layer(torch.cat((avg_encoder_src_output,avg_encoder_tgt_output), dim=-1),add_qz_scale)
 
     def parameters(self, recurse=True):
@@ -189,13 +193,13 @@ class VAE(nn.Module):
         return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters )
 
 
-    def approximate_posterior(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y,add_qz_scale=0.0):
+    def approximate_posterior(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y,add_qz_scale=0.0,disable_x=False, disable_y=False):
         """
         Returns an approximate posterior distribution q(z|x).
         """
 
         if self.language_model_tl is not None:
-            return self.inf_network(x, seq_mask_x, seq_len_x,y, seq_mask_y, seq_len_y,add_qz_scale)
+            return self.inf_network(x, seq_mask_x, seq_len_x,y, seq_mask_y, seq_len_y,add_qz_scale,disable_x,disable_y)
         else:
             return self.inf_network(x, seq_mask_x, seq_len_x,add_qz_scale)
 
@@ -269,12 +273,13 @@ class VAE(nn.Module):
             hidden = tile_rnn_hidden(self.lm_init_layer_rev_tl(z), self.language_model_rev_tl.rnn)
             return self.language_model_rev_tl(x, hidden=hidden, z=z if self.feed_z else None)
 
-    def forward(self, x, seq_mask_x, seq_len_x, y,x_rev,y_rev, z):
+    def forward(self, x, seq_mask_x, seq_len_x, y,x_rev,y_rev, z,disable_x=False, disable_y=False):
 
         # Estimate the Categorical parameters for E[P(x|z)] using the given sample of the latent
         # variable.
-        lm_logits = self.run_language_model(x, z)
-        if self.language_model_tl is not None:
+        lm_logits = self.run_language_model(x, z) if not disable_x else None
+
+        if self.language_model_tl is not None and not disable_y:
             lm_logits_tl=self.run_language_model_tl(y,z)
         else:
             lm_logits_tl=None
@@ -282,19 +287,19 @@ class VAE(nn.Module):
         lm_rev_logits=None
         lm_rev_logits_tl=None
 
-        if self.language_model_rev is not None:
+        if self.language_model_rev is not None and not disable_x:
             lm_rev_logits=self.run_language_model(x_rev,z,reverse=True)
 
-        if self.language_model_rev_tl is not None:
+        if self.language_model_rev_tl is not None and not disable_y:
             lm_rev_logits_tl=self.run_language_model_tl(y_rev,z,reverse=True)
 
         #TODO: think about dropout too
-        if self.bow_output_layer is not None:
+        if self.bow_output_layer is not None and not disable_x:
             bow_logits=self.bow_output_layer(z)
         else:
             bow_logits=None
 
-        if self.bow_output_layer_tl is not None:
+        if self.bow_output_layer_tl is not None and not disable_y:
             bow_logits_tl=self.bow_output_layer_tl(z)
         else:
             bow_logits_tl=None
@@ -379,12 +384,18 @@ class VAE(nn.Module):
         """
 
         # Compute the language model categorical loss.
-        lm_loss = self.language_model.loss(lm_logits, targets_x, reduction="none")
+        lm_loss =0.0
+        bow_loss=0.0
+        if lm_logits is not None:
+            lm_loss  = self.language_model.loss(lm_logits, targets_x, reduction="none")
+            bow_loss=torch.zeros_like(lm_loss)
 
         if lm_logits_tl is not None:
             lm_loss_tl=self.language_model_tl.loss(lm_logits_tl,targets_y,reduction="none")
+            bow_loss_tl=torch.zeros_like(lm_loss_tl)
         else:
             lm_loss_tl=0.0
+            bow_loss_tl=0.0
 
         lm_rev_loss=0.0
         lm_rev_loss_tl=0.0
@@ -395,7 +406,7 @@ class VAE(nn.Module):
         if lm_rev_logits_tl is not None:
             lm_rev_loss_tl=self.language_model_rev_tl.loss(lm_rev_logits_tl,targets_y_rev,reduction="none")
 
-        bow_loss=torch.zeros_like(lm_loss)
+
         if bow_logits is not None:
             bow_logprobs=-F.logsigmoid(bow_logits)
             bsz=bow_logits.size(0)
@@ -405,7 +416,7 @@ class VAE(nn.Module):
                 bow=bow.masked_select(bow_mask)
                 bow_loss[i]=torch.sum( bow_logprobs[i][bow] )
 
-        bow_loss_tl=torch.zeros_like(lm_loss)
+
         if bow_logits_tl is not None:
             bow_logprobs_tl=-F.logsigmoid(bow_logits_tl)
             bsz=bow_logits_tl.size(0)

@@ -96,17 +96,17 @@ def create_model(hparams, vocab_src, vocab_tgt):
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
-               x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in,hparams, step,add_qz_scale=0.0):
+               x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in,hparams, step,add_qz_scale=0.0, x_to_y=False,y_to_x=False):
 
     # Use q(z|x,y) for training to sample a z.
-    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y, add_qz_scale)
+    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y, add_qz_scale, disable_x=y_to_x, disable_y=x_to_y)
     if model.disable_KL:
         z=qz.mean
     else:
         z = qz.rsample()
 
     # Compute the translation and language model logits.
-    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, z)
+    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, z,disable_x=x_to_y, disable_y=y_to_x)
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
@@ -213,27 +213,32 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
         embed=model.tgt_embed if use_tl_lm else model.src_embed
         vocab=vocab_tgt if use_tl_lm else vocab_src
 
-        if hparams.sample_decoding:
-            raw_hypothesis = sampling_decode(language_model, embed,
-                                           model.lm_generate, hidden,
-                                           None, None,
-                                           seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
-                                           vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None)
-        elif hparams.beam_width <= 1:
-            raw_hypothesis = greedy_decode(language_model, embed,
-                                           model.lm_generate, hidden,
-                                           None, None,
-                                           seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
-                                           vocab[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None)
+        if hparams.generate_homotopies:
+            #TODO: implement homotopies
+            raise NotImplementedError
         else:
-            raw_hypothesis = beam_search(language_model, embed, model.lm_generate,
-                                         vocab.size(), hidden, None,
-                                         None, seq_mask_x,
-                                         vocab[SOS_TOKEN], vocab[EOS_TOKEN],
-                                         vocab[PAD_TOKEN], hparams.beam_width,
-                                         hparams.length_penalty_factor,
-                                         hparams.max_decoding_length,hparams.n_best,z if hparams.feed_z else None)
+            if hparams.sample_decoding:
+                raw_hypothesis = sampling_decode(language_model, embed,
+                                               model.lm_generate, hidden,
+                                               None, None,
+                                               seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                               vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None)
+            elif hparams.beam_width <= 1:
+                raw_hypothesis = greedy_decode(language_model, embed,
+                                               model.lm_generate, hidden,
+                                               None, None,
+                                               seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                               vocab[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None)
+            else:
+                raw_hypothesis = beam_search(language_model, embed, model.lm_generate,
+                                             vocab.size(), hidden, None,
+                                             None, seq_mask_x,
+                                             vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                             vocab[PAD_TOKEN], hparams.beam_width,
+                                             hparams.length_penalty_factor,
+                                             hparams.max_decoding_length,hparams.n_best,z if hparams.feed_z else None)
 
+    #hypothesis_l: size= nbest
     hypothesis_l=[]
     for n in range(raw_hypothesis.size(1)):
         hypothesis_l.append(batch_to_sentences(raw_hypothesis[:,n,:], vocab))

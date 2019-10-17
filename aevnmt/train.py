@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import time
 
+import numpy as np
+
 import aevnmt.nmt_helper as nmt_helper
 import aevnmt.aevnmt_helper as aevnmt_helper
 import aevnmt.vae_helper as vae_helper
@@ -126,9 +128,17 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                 x_rev_in= x_rev_out= seq_mask_x_rev= seq_len_x_rev= noisy_x_rev_in =None
                 y_rev_in= y_rev_out= seq_mask_y_rev= seq_len_y_rev= noisy_y_rev_in=None
 
+            x_to_y=False
+            y_to_x=False
+            if np.random.random() < hparams.cross_language_dropout:
+                if np.random.random() <= 0.5:
+                    x_to_y=True
+                else:
+                    y_to_x=True
+
             #with autograd.detect_anomaly():
             train_result = train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
-                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0)
+                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0, x_to_y=x_to_y,y_to_x=y_to_x)
             loss=train_result["loss"]
             # Backpropagate and update gradients.
             loss.backward()
