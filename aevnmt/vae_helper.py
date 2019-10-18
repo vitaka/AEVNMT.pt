@@ -204,19 +204,60 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                 qz=model.prior().expand(qz.mean.size())
             z = qz.mean if deterministic else qz.sample()
 
-        if use_tl_lm:
-            hidden=model.init_lm_tl(z)
-        else:
-            hidden = model.init_lm(z)
 
         language_model=model.language_model_tl if use_tl_lm else model.language_model
         embed=model.tgt_embed if use_tl_lm else model.src_embed
         vocab=vocab_tgt if use_tl_lm else vocab_src
 
         if hparams.generate_homotopies:
-            #TODO: implement homotopies
-            raise NotImplementedError
+            NUM_STEPS=5
+            z2=qz.sample()
+            step=(z2-z)/NUM_STEPS
+
+            z_list=[]
+            for i in range(NUM_STEPS+1)
+                z_list.append(z+i*step)
+            z_list.append(z2)
+
+            raw_hypothesis_l=[]
+            for my_z in z_list:
+                if use_tl_lm:
+                    hidden=model.init_lm_tl(my_z)
+                else:
+                    hidden = model.init_lm(my_z)
+
+                if hparams.sample_decoding:
+                    raw_hypothesis_step = sampling_decode(language_model, embed,
+                                                   model.lm_generate, hidden,
+                                                   None, None,
+                                                   seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, my_z if hparams.feed_z else None)
+                elif hparams.beam_width <= 1:
+                    raw_hypothesis_step = greedy_decode(language_model, embed,
+                                                   model.lm_generate, hidden,
+                                                   None, None,
+                                                   seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,my_z if hparams.feed_z else None)
+                else:
+                    raw_hypothesis_step = beam_search(language_model, embed, model.lm_generate,
+                                                 vocab.size(), hidden, None,
+                                                 None, seq_mask_x,
+                                                 vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                                 vocab[PAD_TOKEN], hparams.beam_width,
+                                                 hparams.length_penalty_factor,
+                                                 hparams.max_decoding_length,hparams.n_best,my_z if hparams.feed_z else None)
+                raw_hypothesis_l.append(raw_hypothesis_step)
+            
+            raw_hypothesis=torch.cat(raw_hypothesis_l,dim=1)
+
+
+
         else:
+            if use_tl_lm:
+                hidden=model.init_lm_tl(z)
+            else:
+                hidden = model.init_lm(z)
+
             if hparams.sample_decoding:
                 raw_hypothesis = sampling_decode(language_model, embed,
                                                model.lm_generate, hidden,
