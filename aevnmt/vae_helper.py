@@ -529,7 +529,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
     val_perplexity = np.exp(val_NLL / num_predictions)
     val_perplexity_lm = np.exp(val_NLL_lm / num_predictions_lm)
     val_perplexity_lm_rev = np.exp(val_NLL_lm_rev / num_predictions_lm)
-    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, total_KL_prediction/num_sentences, val_perplexity_lm,val_NLL_lm/num_sentences, val_perplexity_lm_rev, val_perplexity_lm_rev/num_sentences
+    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, total_KL_prediction/num_sentences, val_perplexity_lm,val_NLL_lm/num_sentences, val_perplexity_lm_rev, val_NLL_lm_rev/num_sentences
 
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
