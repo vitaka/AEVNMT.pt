@@ -162,7 +162,7 @@ class TranslationEngine:
         if not lines:  # we do not like empty jobs
             return []
         aux_data_generator=None
-        assert not (z_lines is not None and y_lines is not None)
+        #assert not (z_lines is not None and y_lines is not None)
         if z_lines is not None:
             aux_data_generator=({'z':eval(l)} for l in z_lines)
         elif y_lines is not None:

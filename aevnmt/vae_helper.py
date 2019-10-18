@@ -203,6 +203,8 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                 #TODO:We are computing qz and it is not needed
                 qz=model.prior().expand(qz.mean.size())
             z = qz.mean if deterministic else qz.sample()
+        else:
+            z=z.to(x_in.device)
 
 
         language_model=model.language_model_tl if use_tl_lm else model.language_model
