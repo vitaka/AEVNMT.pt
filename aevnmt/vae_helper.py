@@ -215,7 +215,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
             step=(z2-z)/NUM_STEPS
 
             z_list=[]
-            for i in range(NUM_STEPS+1)
+            for i in range(NUM_STEPS):
                 z_list.append(z+i*step)
             z_list.append(z2)
 
