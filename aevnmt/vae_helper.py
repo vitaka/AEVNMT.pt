@@ -131,7 +131,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
                         shuffle=False, num_workers=4)
     val_dl = BucketingParallelDataLoader(val_dl,add_reverse=hparams.reverse_lm)
 
-    val_ppl, val_NLL, val_KL, val_KL_pred = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
+    val_ppl, val_NLL, val_KL, val_KL_pred, val_ppl_lm, val_NLL_lm, val_ppl_lm_rev, val_NLL_lm_rev = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
 
     val_bleu_ref, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
                                                   device, hparams)
@@ -152,6 +152,10 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     print(f"direction = {title}\n"
           f"validation perplexity = {val_ppl:,.2f}"
           f" -- validation NLL = {val_NLL:,.2f}"
+          f" -- validation perplexity LM = {val_ppl_lm:,.2f}"
+          f" -- validation NLL LM = {val_NLL_lm:,.2f}"
+          f" -- validation perplexity LM rev = {val_ppl_lm_rev:,.2f}"
+          f" -- validation NLL LM rev = {val_NLL_lm_rev:,.2f}"
           f" -- validation BLEU reference= {val_bleu_ref:.2f}"
           f" -- validation BLEU original = {val_bleu_orig:.2f}"
           f" -- validation BLEU TL = {val_bleu_tl:.2f}"
@@ -368,8 +372,12 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
     model.eval()
     with torch.no_grad():
         num_predictions = 0
+        num_predictions_lm = 0
         num_sentences = 0
         log_marginal = 0.
+        log_marginal_lm = 0.0
+        log_marginal_lm_rev = 0.0
+
         total_KL = 0.
         total_KL_prediction = 0.0
         n_samples = 10
@@ -400,6 +408,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             # log int{p(x, y, z) dz} ~= log sum_z{p(x, y, z) / q(z|x)} where z ~ q(z|x)
             batch_size = x_in.size(0)
             batch_log_marginals = torch.zeros(n_samples, batch_size)
+            batch_log_marginals_lm = torch.zeros(n_samples, batch_size)
+            batch_log_marginals_lm_rev = torch.zeros(n_samples, batch_size)
 
             #Compute bow for each sentence
             bow_indexes=[]
@@ -480,13 +490,25 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
 
                 # Estimate the importance weighted estimate of (the log of) P(x, y)
                 batch_log_marginals[s] = log_lm_prob + log_lm_prob_tl + log_bow_prob + log_bow_prob_tl + log_lm_prob_rev + log_lm_prob_rev_tl + log_pz - log_qz
+                batch_log_marginals_lm[s] = log_lm_prob + log_pz - log_qz
+                batch_log_marginals_lm_rev[s] = log_lm_prob_rev + log_pz - log_qz
+
 
             # Average over all samples.
             batch_log_marginal = torch.logsumexp(batch_log_marginals, dim=0) - \
                                  torch.log(torch.Tensor([n_samples]))
+            batch_log_marginal_lm = torch.logsumexp(batch_log_marginals_lm, dim=0) - \
+                                 torch.log(torch.Tensor([n_samples]))
+            batch_log_marginals_lm_rev = torch.logsumexp(batch_log_marginals_lm_rev, dim=0) - \
+                                 torch.log(torch.Tensor([n_samples]))
+
             log_marginal += batch_log_marginal.sum().item() # [B] -> []
+            log_marginal_lm += batch_log_marginal_lm.sum().item()
+            log_marginal_lm_rev += batch_log_marginals_lm_rev.sum().item()
+
             num_sentences += batch_size
             num_predictions += (seq_len_x.sum() ).item()
+            num_predictions_lm += (seq_len_x.sum() ).item()
             if lm_logits_tl is not None:
                 num_predictions += (seq_len_y.sum() ).item()
             if lm_rev_logits is not None:
@@ -499,8 +521,13 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
     #TODO: compute perplexity and NLL of LMs in both directions
 
     val_NLL = -log_marginal
+    val_NLL_lm= -log_marginal_lm
+    val_NLL_lm_rev = -log_marginal_lm_rev
+
     val_perplexity = np.exp(val_NLL / num_predictions)
-    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, total_KL_prediction/num_sentences
+    val_perplexity_lm = np.exp(val_NLL_lm / num_predictions_lm)
+    val_perplexity_lm_rev = np.exp(val_NLL_lm_rev / num_predictions_lm)
+    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, total_KL_prediction/num_sentences, val_perplexity_lm,val_NLL_lm/num_sentences, val_perplexity_lm_rev, val_perplexity_lm_rev/num_sentences
 
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
