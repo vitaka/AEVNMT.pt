@@ -53,6 +53,7 @@ options = {
     "cross_language_dropout":(float, 0.0, False, "Probability of dropping out one language and computing loss on the other", 1),
     "bow_loss":(bool, False, False, "Add bag-of-words terms to the loss", 1),
     "reverse_lm":(bool, False, False, "z is also used to produce sentences with a reverse LM", 1),
+    "reverse_lm_shareemb":(bool, False, False, "THe reverse LM shares embeddings", 1),
     "disable_KL":(bool, False, False, "Disable KL divergence", 1),
     "logvar":(bool, False, False, "Encoder produces mean and logarithm of variance, instead of mean and stdev", 1),
     "forget_decoder":(bool, False, False, "Re-initialize decoder when loading existing model", 1),

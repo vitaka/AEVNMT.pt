@@ -65,7 +65,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                       num_layers=hparams.num_dec_layers,
                       cell_type=hparams.cell_type,
                       tied_embeddings=hparams.tied_embeddings,
-                      add_input_size= hparams.latent_size if hparams.feed_z else 0)
+                      add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm.embedder if hparams.reverse_lm_shareemb else None)
         if  hparams.vae_tl_lm:
                 rnnlm_tl_rev = RNNLM(vocab_size=vocab_tgt.size(),
                               emb_size=hparams.emb_size,
@@ -75,7 +75,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                               num_layers=hparams.num_dec_layers,
                               cell_type=hparams.cell_type,
                               tied_embeddings=hparams.tied_embeddings,
-                              add_input_size= hparams.latent_size if hparams.feed_z else 0)
+                              add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm_tl.embedder if hparams.reverse_lm_shareemb else None)
 
     model = VAE(   emb_size=hparams.emb_size,
                    latent_size=hparams.latent_size,
@@ -97,7 +97,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
                x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in,hparams, step,add_qz_scale=0.0, x_to_y=False,y_to_x=False):
-
+    import pdb; pdb.set_trace()
     # Use q(z|x,y) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y, add_qz_scale, disable_x=y_to_x, disable_y=x_to_y)
     if model.disable_KL:

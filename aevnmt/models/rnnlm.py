@@ -7,14 +7,14 @@ from aevnmt.components import rnn_creation_fn
 class RNNLM(nn.Module):
 
     def __init__(self, vocab_size, emb_size, hidden_size, pad_idx,
-                 dropout, num_layers, cell_type, tied_embeddings, add_input_size):
+                 dropout, num_layers, cell_type, tied_embeddings, add_input_size,embedder=None):
         """
         An RNN language model.
         """
         super().__init__()
         self.pad_idx = pad_idx
         self.hidden_size = hidden_size
-        self.embedder = nn.Embedding(vocab_size, emb_size, padding_idx=pad_idx)
+        self.embedder = nn.Embedding(vocab_size, emb_size, padding_idx=pad_idx) if embedder is None else embedder
         rnn_dropout = 0. if num_layers == 1 else dropout
         rnn_fn = rnn_creation_fn(cell_type)
         self.rnn = rnn_fn(emb_size+add_input_size, hidden_size, batch_first=True,
