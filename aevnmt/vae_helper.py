@@ -247,7 +247,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                                                  hparams.length_penalty_factor,
                                                  hparams.max_decoding_length,hparams.n_best,my_z if hparams.feed_z else None)
                 raw_hypothesis_l.append(raw_hypothesis_step)
-            
+
             raw_hypothesis=torch.cat(raw_hypothesis_l,dim=1)
 
 
@@ -495,6 +495,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 num_predictions += (seq_len_y_rev.sum() ).item()
             num_predictions+=sum(len(bi) for bi in bow_indexes)
             num_predictions+=sum(len(bi) for bi in bow_indexes_tl)
+
+    #TODO: compute perplexity and NLL of LMs in both directions
 
     val_NLL = -log_marginal
     val_perplexity = np.exp(val_NLL / num_predictions)

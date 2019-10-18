@@ -71,6 +71,7 @@ options = {
     "generate_homotopies": (bool, False, False, "Sample twice (either from posterior or from prior, and genrate 10 homotopies by greedy search) ", 2),
     "n_best": (int, 1, False, "Produce n-best translations with beam search.", 2),
     "re_generate_sl": (bool, False, False, "When decoding, generate SL sentences with the LM instead of translations.", 2),
+    "re_generate_tl": (bool, False, False, "When decoding, generate TL sentences with the LM instead of translations.", 2),
 
     # Optimization hyperparameters
     "gen_optimizer": (str, "adam", False, "Optimizer for generative parameters (options: adam, amsgrad, adadelta, sgd)", 3),

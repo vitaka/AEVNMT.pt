@@ -140,7 +140,7 @@ class TranslationEngine:
 
         self.model = model.to(self.device)
         self.translate_fn = translate_fn
-        if self.hparams.re_generate_sl:
+        if self.hparams.re_generate_sl or self.hparams.re_generate_tl:
             if self.hparams.model_type == "aevnmt":
                 self.translate_fn=aevnmt_helper.re_sample
             elif self.hparams.model_type == "vae":
@@ -219,6 +219,8 @@ class TranslationEngine:
                 moreargs['input_sentences_y']=input_ys
             if hparams.sample_prior_decoding:
                 moreargs['use_prior']=True
+            if hparams.re_generate_tl:
+                moreargs['use_tl_lm']=True
             hypotheses,zs = self.translate_fn(
                 self.model, input_sentences,
                 self.vocab_src, self.vocab_tgt,
