@@ -191,7 +191,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl}
 
 
-def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None, use_tl_lm=False):
+def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None, use_tl_lm=False, use_reverse_lm=False):
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
@@ -211,7 +211,10 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
             z=z.to(x_in.device)
 
 
-        language_model=model.language_model_tl if use_tl_lm else model.language_model
+        if not use_reverse_lm:
+            language_model=model.language_model_tl if use_tl_lm else model.language_model
+        else:
+            language_model=model.language_model_rev_tl if use_tl_lm else model.language_model_rev
         embed=model.tgt_embed if use_tl_lm else model.src_embed
         vocab=vocab_tgt if use_tl_lm else vocab_src
 
