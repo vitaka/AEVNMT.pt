@@ -182,15 +182,29 @@ class VAE(nn.Module):
     def generative_parameters(self):
         # TODO: separate the generative model into a GenerativeModel module
         #  within that module, have two modules, namely, LanguageModel and TranslationModel
-        return self.lm_parameters()
+        return chain(self.lm_parameters(),self.bow_parameters())
+        #return self.lm_parameters()
 
     def lm_parameters(self):
         lm_tl_parameters=iter(())
         lm_tl_init_layer_parameters=iter(())
+        lm_rev_parameters=iter(())
+        lm_rev_init_layer_parameters=iter(())
+        lm_rev_tl_parameters=iter(())
+        lm_rev_tl_init_layer_parameters=iter(())
         if self.language_model_tl is not None:
             lm_tl_parameters=self.language_model_tl.parameters()
             lm_tl_init_layer_parameters=self.lm_init_layer_tl.parameters()
-        return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters )
+        if self.language_model_rev is not None:
+            lm_rev_parameters=self.language_model_rev.parameters()
+            lm_rev_init_layer_parameters=self.lm_init_layer_rev.parameters()
+        if self.language_model_rev_tl is not None:
+            lm_rev_tl_parameters=self.language_model_rev_tl.parameters()
+            lm_rev_tl_init_layer_parameters=self.lm_init_layer_rev_tl.parameters()
+        return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters , lm_rev_parameters, lm_rev_init_layer_parameters, lm_rev_tl_parameters, lm_rev_tl_init_layer_parameters  )
+    
+    def bow_parameters(self):
+        return chain( iter(()) if self.bow_output_layer is None else self.bow_output_layer.parameters()   , iter(()) if self.bow_output_layer_tl is None else self.bow_output_layer_tl.parameters()  )
 
 
     def approximate_posterior(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y,add_qz_scale=0.0,disable_x=False, disable_y=False):
@@ -421,7 +435,7 @@ class VAE(nn.Module):
             bow_logprobs_tl=-F.logsigmoid(bow_logits_tl)
             bsz=bow_logits_tl.size(0)
             for i in range(bsz):
-                bow=torch.unique(targets_y)
+                bow=torch.unique(targets_y[i])
                 bow_mask=( bow != self.language_model_tl.pad_idx)
                 bow=bow.masked_select(bow_mask)
                 bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )

@@ -135,6 +135,9 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                     x_to_y=True
                 else:
                     y_to_x=True
+            
+            #if step==15:
+            #    import pdb; pdb.set_trace()
 
             #with autograd.detect_anomaly():
             train_result = train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
@@ -158,6 +161,8 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
 
             # Print training stats every now and again.
             if step % hparams.print_every == 0:
+                
+                #print (model.bow_output_layer.weight)
                 elapsed = time.time() - tokens_start
                 tokens_per_sec = num_tokens / elapsed if step != 0 else 0
 
