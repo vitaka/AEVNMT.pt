@@ -406,25 +406,39 @@ class VAE(nn.Module):
         if lm_rev_logits_tl is not None:
             lm_rev_loss_tl=self.language_model_rev_tl.loss(lm_rev_logits_tl,targets_y_rev,reduction="none")
 
-
         if bow_logits is not None:
             bow_logprobs=-F.logsigmoid(bow_logits)
+            bow_inverse_logprobs=-torch.log((1-torch.sigmoid(bow_logits)))
             bsz=bow_logits.size(0)
             for i in range(bsz):
                 bow=torch.unique(targets_x[i])
                 bow_mask=( bow != self.language_model.pad_idx)
                 bow=bow.masked_select(bow_mask)
-                bow_loss[i]=torch.sum( bow_logprobs[i][bow] )
+
+                vocab_mask=torch.ones_like(bow_logprobs[i])
+                vocab_mask[bow] = 0
+                vocab_mask[self.language_model.pad_idx]=0
+                inv_bow=vocab_mask.nonzero().squeeze()
+
+                bow_loss[i]=torch.sum( bow_logprobs[i][bow] ) + torch.sum( bow_inverse_logprobs[i][inv_bow] )
 
 
         if bow_logits_tl is not None:
             bow_logprobs_tl=-F.logsigmoid(bow_logits_tl)
+            bow_inverse_logprobs_tl=-torch.log((1-torch.sigmoid(bow_logits_tl)))
             bsz=bow_logits_tl.size(0)
             for i in range(bsz):
                 bow=torch.unique(targets_y)
                 bow_mask=( bow != self.language_model_tl.pad_idx)
                 bow=bow.masked_select(bow_mask)
-                bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )
+
+                vocab_mask=torch.ones_like(bow_logprobs_tl[i])
+                vocab_mask[bow] = 0
+                vocab_mask[self.language_model_tl.pad_idx]=0
+                inv_bow=vocab_mask.nonzero().squeeze()
+
+                bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) + torch.sum( bow_inverse_logprobs_tl[i][inv_bow] )
+
 
 
         # Compute the KL divergence between the distribution used to sample z, and the prior
