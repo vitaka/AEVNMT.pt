@@ -417,7 +417,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
 
             #Compute bow for each sentence
             bow_indexes=[]
-            bow_indexes_inv=[]
+            #bow_indexes_inv=[]
             if model.bow_output_layer is not None:
                 for i in range(batch_size):
                     bow=torch.unique(x_out[i] * seq_mask_x[i].type_as(x_out[i]))
@@ -425,14 +425,14 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                     bow=bow.masked_select(bow_mask)
                     bow_indexes.append(bow)
 
-                    vocab_mask=torch.ones(model.bow_output_layer.out_features,device=x_out.device)
-                    vocab_mask[bow] = 0
-                    vocab_mask[model.language_model.pad_idx]=0
-                    inv_bow=vocab_mask.nonzero().squeeze()
-                    bow_indexes_inv.append(inv_bow)
+                    #vocab_mask=torch.ones(model.bow_output_layer.out_features,device=x_out.device)
+                    #vocab_mask[bow] = 0
+                    #vocab_mask[model.language_model.pad_idx]=0
+                    #inv_bow=vocab_mask.nonzero().squeeze()
+                    #bow_indexes_inv.append(inv_bow)
 
             bow_indexes_tl=[]
-            bow_indexes_inv_tl=[]
+            #bow_indexes_inv_tl=[]
             if model.bow_output_layer_tl is not None:
                 for i in range(batch_size):
                     bow=torch.unique(y_out[i] * seq_mask_y[i].type_as(y_out[i]),dim=-1)
@@ -440,11 +440,11 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                     bow=bow.masked_select(bow_mask)
                     bow_indexes_tl.append(bow)
 
-                    vocab_mask=torch.ones(model.bow_output_layer_tl.out_features,device=x_out.device)
-                    vocab_mask[bow] = 0
-                    vocab_mask[model.language_model_tl.pad_idx]=0
-                    inv_bow=vocab_mask.nonzero().squeeze()
-                    bow_indexes_inv_tl.append(inv_bow)
+                    #vocab_mask=torch.ones(model.bow_output_layer_tl.out_features,device=x_out.device)
+                    #vocab_mask[bow] = 0
+                    #vocab_mask[model.language_model_tl.pad_idx]=0
+                    #inv_bow=vocab_mask.nonzero().squeeze()
+                    #bow_indexes_inv_tl.append(inv_bow)
 
 
             for s in range(n_samples):
@@ -486,22 +486,22 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 log_bow_prob_tl=torch.zeros_like(log_lm_prob)
 
                 if bow_logits is not None:
-                    bow_logprobs=F.logsigmoid(bow_logits)
-                    bow_logprobs_inv=torch.log(1-torch.sigmoid(bow_logits))
+                    bow_logprobs=F.log_softmax(bow_logits,dim=-1)
+                    #bow_logprobs_inv=torch.log(1-torch.sigmoid(bow_logits))
                     bsz=bow_logits.size(0)
                     for i in range(bsz):
                         bow=bow_indexes[i]
-                        bow_inv=bow_indexes_inv[i]
-                        log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] ) + torch.sum(bow_logprobs_inv[i][bow_inv])
+                        #bow_inv=bow_indexes_inv[i]
+                        log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] )# + torch.sum(bow_logprobs_inv[i][bow_inv])
 
                 if bow_logits_tl is not None:
-                    bow_logprobs_tl=F.logsigmoid(bow_logits_tl)
-                    bow_logprobs_inv_tl=torch.log(1-torch.sigmoid(bow_logits_tl))
+                    bow_logprobs_tl=F.log_softmax(bow_logits_tl,dim=-1)
+                    #bow_logprobs_inv_tl=torch.log(1-torch.sigmoid(bow_logits_tl))
                     bsz=bow_logits_tl.size(0)
                     for i in range(bsz):
                         bow=bow_indexes_tl[i]
-                        bow_inv=bow_indexes_inv_tl[i]
-                        log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) + torch.sum( bow_logprobs_inv_tl[i][bow_inv] )
+                        #bow_inv=bow_indexes_inv_tl[i]
+                        log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) #+ torch.sum( bow_logprobs_inv_tl[i][bow_inv] )
 
                 #Importance sampling: as if we were integratting over prior probabilities
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
@@ -536,12 +536,12 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             if lm_rev_logits_tl is not None:
                 num_predictions += (seq_len_y_rev.sum() ).item()
 
-            if model.bow_output_layer is not None:
-                num_predictions+=  (model.bow_output_layer.out_features-1)*batch_size #-1 because we ignore pad_idx
-            if model.bow_output_layer_tl is not None:
-                num_predictions+= (model.bow_output_layer_tl.out_features-1)*batch_size
-
-    #TODO: compute perplexity and NLL of LMs in both directions
+            #if model.bow_output_layer is not None:
+            #num_predictions+=  (model.bow_output_layer.out_features-1)*batch_size #-1 because we ignore pad_idx
+            #if model.bow_output_layer_tl is not None:
+            #num_predictions+= (model.bow_output_layer_tl.out_features-1)*batch_size
+            num_predictions+=sum(len(bi) for bi in bow_indexes)
+            num_predictions+=sum(len(bi) for bi in bow_indexes_tl)
 
     val_NLL = -log_marginal
     val_NLL_lm= -log_marginal_lm

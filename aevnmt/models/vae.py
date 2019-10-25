@@ -202,7 +202,7 @@ class VAE(nn.Module):
             lm_rev_tl_parameters=self.language_model_rev_tl.parameters()
             lm_rev_tl_init_layer_parameters=self.lm_init_layer_rev_tl.parameters()
         return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters , lm_rev_parameters, lm_rev_init_layer_parameters, lm_rev_tl_parameters, lm_rev_tl_init_layer_parameters  )
-    
+
     def bow_parameters(self):
         return chain( iter(()) if self.bow_output_layer is None else self.bow_output_layer.parameters()   , iter(()) if self.bow_output_layer_tl is None else self.bow_output_layer_tl.parameters()  )
 
@@ -421,37 +421,37 @@ class VAE(nn.Module):
             lm_rev_loss_tl=self.language_model_rev_tl.loss(lm_rev_logits_tl,targets_y_rev,reduction="none")
 
         if bow_logits is not None:
-            bow_logprobs=-F.logsigmoid(bow_logits)
-            bow_inverse_logprobs=-torch.log((1-torch.sigmoid(bow_logits)))
+            bow_logprobs=-F.log_softmax(bow_logits,dim=-1)
+            #bow_inverse_logprobs=-torch.log((1-torch.sigmoid(bow_logits)))
             bsz=bow_logits.size(0)
             for i in range(bsz):
                 bow=torch.unique(targets_x[i])
                 bow_mask=( bow != self.language_model.pad_idx)
                 bow=bow.masked_select(bow_mask)
 
-                vocab_mask=torch.ones_like(bow_logprobs[i])
-                vocab_mask[bow] = 0
-                vocab_mask[self.language_model.pad_idx]=0
-                inv_bow=vocab_mask.nonzero().squeeze()
+                #vocab_mask=torch.ones_like(bow_logprobs[i])
+                #vocab_mask[bow] = 0
+                #vocab_mask[self.language_model.pad_idx]=0
+                #inv_bow=vocab_mask.nonzero().squeeze()
 
-                bow_loss[i]=torch.sum( bow_logprobs[i][bow] ) + torch.sum( bow_inverse_logprobs[i][inv_bow] )
+                bow_loss[i]=torch.sum( bow_logprobs[i][bow] ) #+ torch.sum( bow_inverse_logprobs[i][inv_bow] )
 
 
         if bow_logits_tl is not None:
-            bow_logprobs_tl=-F.logsigmoid(bow_logits_tl)
-            bow_inverse_logprobs_tl=-torch.log((1-torch.sigmoid(bow_logits_tl)))
+            bow_logprobs_tl=-F.log_softmax(bow_logits_tl,dim=-1)
+            #bow_inverse_logprobs_tl=-torch.log((1-torch.sigmoid(bow_logits_tl)))
             bsz=bow_logits_tl.size(0)
             for i in range(bsz):
                 bow=torch.unique(targets_y[i])
                 bow_mask=( bow != self.language_model_tl.pad_idx)
                 bow=bow.masked_select(bow_mask)
 
-                vocab_mask=torch.ones_like(bow_logprobs_tl[i])
-                vocab_mask[bow] = 0
-                vocab_mask[self.language_model_tl.pad_idx]=0
-                inv_bow=vocab_mask.nonzero().squeeze()
+                #vocab_mask=torch.ones_like(bow_logprobs_tl[i])
+                #vocab_mask[bow] = 0
+                #vocab_mask[self.language_model_tl.pad_idx]=0
+                #inv_bow=vocab_mask.nonzero().squeeze()
 
-                bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) + torch.sum( bow_inverse_logprobs_tl[i][inv_bow] )
+                bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )# + torch.sum( bow_inverse_logprobs_tl[i][inv_bow] )
 
 
 
