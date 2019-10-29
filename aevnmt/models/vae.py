@@ -425,7 +425,7 @@ class VAE(nn.Module):
 
         if bow_logits is not None:
             if self.bernoulli_bow:
-                bow_logprobs,bow_inverse_logprobs = sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits)
+                bow_logprobs,bow_inverse_logprobs = -sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits)
                 bsz=bow_logits.size(0)
 
                 for i in range(bsz):
@@ -459,7 +459,7 @@ class VAE(nn.Module):
 
         if bow_logits_tl is not None:
             if self.bernoulli_bow:
-                bow_logprobs,bow_inverse_logprobs = sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits_tl)
+                bow_logprobs,bow_inverse_logprobs = -sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits_tl)
                 bsz=bow_logits_tl.size(0)
                 for i in range(bsz):
                     bow=torch.unique(targets_y[i])
