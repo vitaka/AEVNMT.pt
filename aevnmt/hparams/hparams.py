@@ -52,6 +52,7 @@ options = {
     "vae_tl_lm":(bool, False, False, "VAE shares z to produce 2 outputs", 1),
     "cross_language_dropout":(float, 0.0, False, "Probability of dropping out one language and computing loss on the other", 1),
     "bow_loss":(bool, False, False, "Add bag-of-words terms to the loss", 1),
+    "bow_loss_product_bernoulli":(bool, False, False, "Bag-of-words loss is log of a product of independent Bernoulli probs. Otherwise, it is a softmax loss.", 1),
     "reverse_lm":(bool, False, False, "z is also used to produce sentences with a reverse LM", 1),
     "reverse_lm_shareemb":(bool, False, False, "THe reverse LM shares embeddings", 1),
     "disable_KL":(bool, False, False, "Disable KL divergence", 1),

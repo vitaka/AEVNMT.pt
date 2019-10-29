@@ -191,6 +191,7 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
             if not lm_decoding:
                 encoder_outputs = encoder_outputs.index_select(0, select_indices)
             seq_mask_x = seq_mask_x.index_select(0, select_indices)
+            z=z.index_select(0,select_indices)
             if not lm_decoding:
                 decoder.attention.proj_keys = decoder.attention.proj_keys. \
                     index_select(0, select_indices)

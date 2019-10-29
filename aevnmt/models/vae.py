@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from aevnmt.components import RNNEncoder, tile_rnn_hidden, tile_rnn_hidden_for_decoder
 from aevnmt.dist import NormalLayer
 
+import sparsedists.bernoulli
+
 from itertools import chain
 
 class InferenceNetwork(nn.Module):
@@ -103,11 +105,12 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,bow=False, disable_KL=False,logvar=False):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False):
         super().__init__()
 
         self.disable_KL=disable_KL
         self.logvar=logvar
+        self.bernoulli_bow=bernoulli_bow
 
         self.feed_z=feed_z
         self.latent_size = latent_size
@@ -421,38 +424,69 @@ class VAE(nn.Module):
             lm_rev_loss_tl=self.language_model_rev_tl.loss(lm_rev_logits_tl,targets_y_rev,reduction="none")
 
         if bow_logits is not None:
-            bow_logprobs=-F.log_softmax(bow_logits,dim=-1)
-            #bow_inverse_logprobs=-torch.log((1-torch.sigmoid(bow_logits)))
-            bsz=bow_logits.size(0)
-            for i in range(bsz):
-                bow=torch.unique(targets_x[i])
-                bow_mask=( bow != self.language_model.pad_idx)
-                bow=bow.masked_select(bow_mask)
+            if self.bernoulli_bow:
+                bow_logprobs,bow_inverse_logprobs = sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits)
+                bsz=bow_logits.size(0)
 
-                #vocab_mask=torch.ones_like(bow_logprobs[i])
-                #vocab_mask[bow] = 0
-                #vocab_mask[self.language_model.pad_idx]=0
-                #inv_bow=vocab_mask.nonzero().squeeze()
+                for i in range(bsz):
+                    bow=torch.unique(targets_x[i])
+                    bow_mask=( bow != self.language_model.pad_idx)
+                    bow=bow.masked_select(bow_mask)
 
-                bow_loss[i]=torch.sum( bow_logprobs[i][bow] ) #+ torch.sum( bow_inverse_logprobs[i][inv_bow] )
+                    vocab_mask=torch.ones_like(bow_logprobs[i])
+                    vocab_mask[bow] = 0
+                    vocab_mask[self.language_model.pad_idx]=0
+                    inv_bow=vocab_mask.nonzero().squeeze()
+
+                    bow_loss[i]=torch.sum( bow_logprobs[i][bow] ) + torch.sum( bow_inverse_logprobs[i][inv_bow] )
+
+            else:
+                bow_logprobs=-F.log_softmax(bow_logits,dim=-1)
+                #bow_inverse_logprobs=-torch.log((1-torch.sigmoid(bow_logits)))
+                bsz=bow_logits.size(0)
+                for i in range(bsz):
+                    bow=torch.unique(targets_x[i])
+                    bow_mask=( bow != self.language_model.pad_idx)
+                    bow=bow.masked_select(bow_mask)
+
+                    #vocab_mask=torch.ones_like(bow_logprobs[i])
+                    #vocab_mask[bow] = 0
+                    #vocab_mask[self.language_model.pad_idx]=0
+                    #inv_bow=vocab_mask.nonzero().squeeze()
+
+                    bow_loss[i]=torch.sum( bow_logprobs[i][bow] ) #+ torch.sum( bow_inverse_logprobs[i][inv_bow] )
 
 
         if bow_logits_tl is not None:
-            bow_logprobs_tl=-F.log_softmax(bow_logits_tl,dim=-1)
-            #bow_inverse_logprobs_tl=-torch.log((1-torch.sigmoid(bow_logits_tl)))
-            bsz=bow_logits_tl.size(0)
-            for i in range(bsz):
-                bow=torch.unique(targets_y[i])
-                bow_mask=( bow != self.language_model_tl.pad_idx)
-                bow=bow.masked_select(bow_mask)
+            if self.bernoulli_bow:
+                bow_logprobs,bow_inverse_logprobs = sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits_tl)
+                bsz=bow_logits_tl.size(0)
+                for i in range(bsz):
+                    bow=torch.unique(targets_y[i])
+                    bow_mask=( bow != self.language_model_tl.pad_idx)
+                    bow=bow.masked_select(bow_mask)
 
-                #vocab_mask=torch.ones_like(bow_logprobs_tl[i])
-                #vocab_mask[bow] = 0
-                #vocab_mask[self.language_model_tl.pad_idx]=0
-                #inv_bow=vocab_mask.nonzero().squeeze()
+                    vocab_mask=torch.ones_like(bow_logprobs_tl[i])
+                    vocab_mask[bow] = 0
+                    vocab_mask[self.language_model_tl.pad_idx]=0
+                    inv_bow=vocab_mask.nonzero().squeeze()
 
-                bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )# + torch.sum( bow_inverse_logprobs_tl[i][inv_bow] )
+                    bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) + torch.sum( bow_inverse_logprobs_tl[i][inv_bow] )
+            else:
+                bow_logprobs_tl=-F.log_softmax(bow_logits_tl,dim=-1)
+                #bow_inverse_logprobs_tl=-torch.log((1-torch.sigmoid(bow_logits_tl)))
+                bsz=bow_logits_tl.size(0)
+                for i in range(bsz):
+                    bow=torch.unique(targets_y[i])
+                    bow_mask=( bow != self.language_model_tl.pad_idx)
+                    bow=bow.masked_select(bow_mask)
 
+                    #vocab_mask=torch.ones_like(bow_logprobs_tl[i])
+                    #vocab_mask[bow] = 0
+                    #vocab_mask[self.language_model_tl.pad_idx]=0
+                    #inv_bow=vocab_mask.nonzero().squeeze()
+
+                    bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )# + torch.sum( bow_inverse_logprobs_tl[i][inv_bow] )
 
 
         # Compute the KL divergence between the distribution used to sample z, and the prior

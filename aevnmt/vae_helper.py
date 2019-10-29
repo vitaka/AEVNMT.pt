@@ -3,6 +3,8 @@ import torch.nn.functional as F
 import numpy as np
 from torch.distributions.normal import Normal
 
+import sparsedists.bernoulli
+
 from aevnmt.data import BucketingParallelDataLoader, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
 from aevnmt.data import create_batch, batch_to_sentences
 from aevnmt.components import RNNEncoder, beam_search, greedy_decode, sampling_decode
@@ -92,7 +94,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    language_model_rev=rnnlm_rev,
                    language_model_rev_tl=rnnlm_tl_rev,
                    bow=hparams.bow_loss,
-                   disable_KL=hparams.disable_KL, logvar=hparams.logvar)
+                   disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -417,7 +419,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
 
             #Compute bow for each sentence
             bow_indexes=[]
-            #bow_indexes_inv=[]
+            bow_indexes_inv=[]
             if model.bow_output_layer is not None:
                 for i in range(batch_size):
                     bow=torch.unique(x_out[i] * seq_mask_x[i].type_as(x_out[i]))
@@ -425,14 +427,14 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                     bow=bow.masked_select(bow_mask)
                     bow_indexes.append(bow)
 
-                    #vocab_mask=torch.ones(model.bow_output_layer.out_features,device=x_out.device)
-                    #vocab_mask[bow] = 0
-                    #vocab_mask[model.language_model.pad_idx]=0
-                    #inv_bow=vocab_mask.nonzero().squeeze()
-                    #bow_indexes_inv.append(inv_bow)
+                    vocab_mask=torch.ones(model.bow_output_layer.out_features,device=x_out.device)
+                    vocab_mask[bow] = 0
+                    vocab_mask[model.language_model.pad_idx]=0
+                    inv_bow=vocab_mask.nonzero().squeeze()
+                    bow_indexes_inv.append(inv_bow)
 
             bow_indexes_tl=[]
-            #bow_indexes_inv_tl=[]
+            bow_indexes_inv_tl=[]
             if model.bow_output_layer_tl is not None:
                 for i in range(batch_size):
                     bow=torch.unique(y_out[i] * seq_mask_y[i].type_as(y_out[i]),dim=-1)
@@ -440,11 +442,11 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                     bow=bow.masked_select(bow_mask)
                     bow_indexes_tl.append(bow)
 
-                    #vocab_mask=torch.ones(model.bow_output_layer_tl.out_features,device=x_out.device)
-                    #vocab_mask[bow] = 0
-                    #vocab_mask[model.language_model_tl.pad_idx]=0
-                    #inv_bow=vocab_mask.nonzero().squeeze()
-                    #bow_indexes_inv_tl.append(inv_bow)
+                    vocab_mask=torch.ones(model.bow_output_layer_tl.out_features,device=x_out.device)
+                    vocab_mask[bow] = 0
+                    vocab_mask[model.language_model_tl.pad_idx]=0
+                    inv_bow=vocab_mask.nonzero().squeeze()
+                    bow_indexes_inv_tl.append(inv_bow)
 
 
             for s in range(n_samples):
@@ -486,22 +488,38 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 log_bow_prob_tl=torch.zeros_like(log_lm_prob)
 
                 if bow_logits is not None:
-                    bow_logprobs=F.log_softmax(bow_logits,dim=-1)
-                    #bow_logprobs_inv=torch.log(1-torch.sigmoid(bow_logits))
-                    bsz=bow_logits.size(0)
-                    for i in range(bsz):
-                        bow=bow_indexes[i]
-                        #bow_inv=bow_indexes_inv[i]
-                        log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] )# + torch.sum(bow_logprobs_inv[i][bow_inv])
+                    if model.bernoulli_bow:
+                        bow_logprobs,bow_logprobs_inv =sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits)
+                        bsz=bow_logits.size(0)
+                        for i in range(bsz):
+                            bow=bow_indexes[i]
+                            bow_inv=bow_indexes_inv[i]
+                            log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] ) + torch.sum(bow_logprobs_inv[i][bow_inv])
+                    else:
+                        bow_logprobs=F.log_softmax(bow_logits,dim=-1)
+                        #bow_logprobs_inv=torch.log(1-torch.sigmoid(bow_logits))
+                        bsz=bow_logits.size(0)
+                        for i in range(bsz):
+                            bow=bow_indexes[i]
+                            #bow_inv=bow_indexes_inv[i]
+                            log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] )# + torch.sum(bow_logprobs_inv[i][bow_inv])
 
                 if bow_logits_tl is not None:
-                    bow_logprobs_tl=F.log_softmax(bow_logits_tl,dim=-1)
-                    #bow_logprobs_inv_tl=torch.log(1-torch.sigmoid(bow_logits_tl))
-                    bsz=bow_logits_tl.size(0)
-                    for i in range(bsz):
-                        bow=bow_indexes_tl[i]
-                        #bow_inv=bow_indexes_inv_tl[i]
-                        log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) #+ torch.sum( bow_logprobs_inv_tl[i][bow_inv] )
+                    if model.bernoulli_bow:
+                        bow_logprobs_tl,bow_logprobs_inv_tl =sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits)
+                        bsz=bow_logits_tl.size(0)
+                        for i in range(bsz):
+                            bow=bow_indexes_tl[i]
+                            bow_inv=bow_indexes_inv_tl[i]
+                            log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) + torch.sum( bow_logprobs_inv_tl[i][bow_inv] )
+                    else:
+                        bow_logprobs_tl=F.log_softmax(bow_logits_tl,dim=-1)
+                        #bow_logprobs_inv_tl=torch.log(1-torch.sigmoid(bow_logits_tl))
+                        bsz=bow_logits_tl.size(0)
+                        for i in range(bsz):
+                            bow=bow_indexes_tl[i]
+                            #bow_inv=bow_indexes_inv_tl[i]
+                            log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) #+ torch.sum( bow_logprobs_inv_tl[i][bow_inv] )
 
                 #Importance sampling: as if we were integratting over prior probabilities
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
