@@ -10,7 +10,8 @@ from aevnmt.data.textprocessing import TextProcess
 
 class ParallelDataset(Dataset):
 
-    def __init__(self, src_file, tgt_file, max_length=-1,add_reverse=False):
+    def __init__(self, src_file, tgt_file, max_length=-1,add_reverse=False, add_shuffled=False):
+        assert not (add_reverse and add_shuffled)
         self.data = []
         with open(src_file) as sf, open(tgt_file) as tf:
             for src, tgt in zip(sf, tf):
@@ -21,8 +22,11 @@ class ParallelDataset(Dataset):
                 if add_reverse:
                     src_rev=" ".join(src.split(" ")[::-1])
                     tgt_rev=" ".join(tgt.split(" ")[::-1])
+                if add_shuffled:
+                    src_rev=" ".join(np.random.permutation(src.split(" ")))
+                    tgt_rev=" ".join(np.random.permutation(tgt.split(" ")))
                 if max_length < 0 or (src_length <= max_length and tgt_length <= max_length):
-                    if add_reverse:
+                    if add_reverse or add_shuffled:
                         self.data.append((src, tgt,src_rev,tgt_rev))
                     else:
                         self.data.append((src, tgt))

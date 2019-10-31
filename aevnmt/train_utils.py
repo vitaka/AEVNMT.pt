@@ -49,7 +49,7 @@ def load_data(hparams, vocab_src, vocab_tgt, use_memmap=False, val_tgt_suffix=""
                 max_length=hparams.max_sentence_length
             )
     else:
-        training_data = ParallelDataset(train_src, train_tgt, max_length=hparams.max_sentence_length,add_reverse= hparams.reverse_lm)
+        training_data = ParallelDataset(train_src, train_tgt, max_length=hparams.max_sentence_length,add_reverse= hparams.reverse_lm, add_shuffled=hparams.shuffle_lm)
         val_data = ParallelDataset(val_src, val_tgt, max_length=-1,add_reverse= hparams.reverse_lm)
         if hparams.mono_src:
             opt_data['mono_src'] = TextDataset(hparams.mono_src, max_length=hparams.max_sentence_length)

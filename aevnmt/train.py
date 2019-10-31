@@ -65,7 +65,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
     # Create a dataloader that buckets the batches.
     dl = DataLoader(training_data, batch_size=hparams.batch_size,
                     shuffle=True, num_workers=4)
-    bucketing_dl = BucketingParallelDataLoader(dl,add_reverse=hparams.reverse_lm)
+    bucketing_dl = BucketingParallelDataLoader(dl,add_reverse=hparams.reverse_lm or hparams.shuffle_lm)
 
     # Save the best model based on development BLEU.
     ckpt = CheckPoint(model_dir=out_dir/"model", metrics=['bleu', 'likelihood'])
@@ -103,7 +103,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
 
         # Train for 1 epoch.
         for sentences_tuple in bucketing_dl:
-            if hparams.reverse_lm:
+            if hparams.reverse_lm or hparams.shuffle_lm:
                 sentences_x, sentences_y, sentences_x_rev, sentences_y_rev =sentences_tuple
             else:
                 sentences_x, sentences_y =sentences_tuple
@@ -117,7 +117,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                 sentences_y, vocab_tgt, device,
                 word_dropout=hparams.word_dropout)
 
-            if hparams.reverse_lm:
+            if hparams.reverse_lm or hparams.shuffle_lm:
                 x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in = create_noisy_batch(
                     sentences_x_rev, vocab_src, device,
                     word_dropout=hparams.word_dropout)
@@ -135,7 +135,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                     x_to_y=True
                 else:
                     y_to_x=True
-            
+
             #if step==15:
             #    import pdb; pdb.set_trace()
 
@@ -161,7 +161,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
 
             # Print training stats every now and again.
             if step % hparams.print_every == 0:
-                
+
                 #print (model.bow_output_layer.weight)
                 elapsed = time.time() - tokens_start
                 tokens_per_sec = num_tokens / elapsed if step != 0 else 0
