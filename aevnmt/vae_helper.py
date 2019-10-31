@@ -42,7 +42,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                   num_layers=hparams.num_dec_layers,
                   cell_type=hparams.cell_type,
                   tied_embeddings=hparams.tied_embeddings,
-                  add_input_size= hparams.latent_size if hparams.feed_z else 0)
+                  add_input_size= hparams.latent_size if hparams.feed_z else 0, gate_z=hparams.gate_z)
 
     rnnlm_tl=None
     if hparams.vae_tl_lm:
@@ -54,7 +54,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                       num_layers=hparams.num_dec_layers,
                       cell_type=hparams.cell_type,
                       tied_embeddings=hparams.tied_embeddings,
-                      add_input_size= hparams.latent_size if hparams.feed_z else 0)
+                      add_input_size= hparams.latent_size if hparams.feed_z else 0, gate_z=hparams.gate_z)
 
     rnnlm_rev=None
     rnnlm_tl_rev=None
@@ -67,7 +67,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                       num_layers=hparams.num_dec_layers,
                       cell_type=hparams.cell_type,
                       tied_embeddings=hparams.tied_embeddings,
-                      add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm.embedder if hparams.reverse_lm_shareemb else None)
+                      add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm.embedder if hparams.reverse_lm_shareemb else None, gate_z=hparams.gate_z)
         if  hparams.vae_tl_lm:
                 rnnlm_tl_rev = RNNLM(vocab_size=vocab_tgt.size(),
                               emb_size=hparams.emb_size,
@@ -77,7 +77,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                               num_layers=hparams.num_dec_layers,
                               cell_type=hparams.cell_type,
                               tied_embeddings=hparams.tied_embeddings,
-                              add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm_tl.embedder if hparams.reverse_lm_shareemb else None)
+                              add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm_tl.embedder if hparams.reverse_lm_shareemb else None, gate_z=hparams.gate_z)
 
     model = VAE(   emb_size=hparams.emb_size,
                    latent_size=hparams.latent_size,
