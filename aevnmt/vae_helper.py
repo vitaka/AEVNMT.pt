@@ -101,6 +101,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
                x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in,hparams, step,add_qz_scale=0.0, x_to_y=False,y_to_x=False):
     # Use q(z|x,y) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y, add_qz_scale, disable_x=y_to_x, disable_y=x_to_y)
+
     if model.disable_KL:
         z=qz.mean
     else:
@@ -111,7 +112,8 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
-        KL_weight = min(1., (1.0 / hparams.KL_annealing_steps) * step)
+        initial_KL=0
+        KL_weight = min(1.,   ((1.0 - initial_KL ) / hparams.KL_annealing_steps) * step + initial_KL )
     else:
         KL_weight = 1.
 

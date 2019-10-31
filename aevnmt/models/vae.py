@@ -423,6 +423,7 @@ class VAE(nn.Module):
         if lm_rev_logits_tl is not None:
             lm_rev_loss_tl=self.language_model_rev_tl.loss(lm_rev_logits_tl,targets_y_rev,reduction="none")
 
+        num_bow_predictions=0
         if bow_logits is not None:
             if self.bernoulli_bow:
                 bow_logprobs,bow_inverse_logprobs = sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits)
@@ -441,6 +442,7 @@ class VAE(nn.Module):
                     inv_bow=vocab_mask.nonzero().squeeze()
 
                     bow_loss[i]=torch.sum( bow_logprobs[i][bow] ) + torch.sum( bow_inverse_logprobs[i][inv_bow] )
+                    num_bow_predictions+=(len(bow) + len(inv_bow))
 
             else:
                 bow_logprobs=-F.log_softmax(bow_logits,dim=-1)
@@ -457,6 +459,7 @@ class VAE(nn.Module):
                     #inv_bow=vocab_mask.nonzero().squeeze()
 
                     bow_loss[i]=torch.sum( bow_logprobs[i][bow] ) #+ torch.sum( bow_inverse_logprobs[i][inv_bow] )
+                    num_bow_predictions+=len(bow)
 
 
         if bow_logits_tl is not None:
@@ -496,10 +499,16 @@ class VAE(nn.Module):
         # Compute the KL divergence between the distribution used to sample z, and the prior
         # distribution.
         pz = self.prior().expand(qz.mean.size())
+       
+        #import pdb; pdb.set_trace() 
+        bow_weight=1
+        if bow_logits is not None and self.bernoulli_bow:
+            #Ratio between number of LM predictions and number of bow predictions
+            bow_weight= lm_logits.size(1)*1.0/(num_bow_predictions*1.0/lm_logits.size(0))
 
         # The loss is the negative ELBO.
         lm_log_likelihood = -lm_loss - lm_loss_tl - lm_rev_loss - lm_rev_loss_tl
-        bow_log_likelihood = - bow_loss - bow_loss_tl
+        bow_log_likelihood = (- bow_loss - bow_loss_tl)*bow_weight
 
         KL=0.0
         raw_KL=0.0
@@ -526,6 +535,7 @@ class VAE(nn.Module):
         out_dict = {
             'lm_log_likelihood': lm_log_likelihood,
             'bow_log_likelihood': bow_log_likelihood,
+            'bow_weight': bow_weight,
             'KL': KL,
             'raw_KL': raw_KL
         }
