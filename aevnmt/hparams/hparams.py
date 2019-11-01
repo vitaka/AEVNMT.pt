@@ -32,19 +32,26 @@ options = {
     # Model hyperparameters
     "model_type": (str, "cond_nmt", False, "The type of model to train:"
                                            " aevnmt", 1),
-    "cell_type": (str, "lstm", False, "The RNN cell type. rnn|gru|lstm", 1),
     "emb_size": (int, 32, False, "The source / target embedding size.", 1),
     "hidden_size": (int, 32, False, "The size of the hidden layers.", 1),
     "latent_size": (int, 32, False, "The size of the latent variables.", 1),
     "num_enc_layers": (int, 1, False, "The number of encoder layers.", 1),
     "num_dec_layers": (int, 1, False, "The number of decoder layers.", 1),
-    "bidirectional": (bool, False, False, "Use a bidirectional encoder.", 1),
-    "attention": (str, "luong", False, "Attention type: luong|scaled_luong|bahdanau", 1),
+    "encoder_style": (str, "rnn", False, "The type of encoder architecture: rnn|transformer", 1),
     "decoder_style": (str, "luong", False, "Decoder style: luong|bahdanau", 1),
     "emb_init_scale": (float, 0.01, False, "Scale of the Gaussian that is used to"
                                            " initialize the embeddings.", 1),
-    "tied_embeddings": (bool, False, False, "Tie the embedding matrix with the output"
-                                            " projection.", 1),
+    "tied_embeddings": (bool, False, False, "Tie the embedding matrix with the output projection.", 1),
+
+     # Transformer encoder / decoder hyperparameters.
+    "transformer_heads": (int, 8, False, "The number of transformer heads in that architecture", 1),
+    "transformer_hidden": (int, 2048, False, "The size of the hidden feedforward layer in the transformer", 1),
+
+    #RNN Hyperparameters
+    "bidirectional": (bool, False, False, "Use a bidirectional encoder.", 1),
+    "attention": (str, "luong", False, "Attention type: luong|scaled_luong|bahdanau", 1),
+    "cell_type": (str, "lstm", False, "The RNN cell type. rnn|gru|lstm", 1),
+
     "separate_prediction_network": (bool, False, False, "Train q(z|x,y), translate with r(z|x)", 1),
     "disable_prediction_network": (bool, False, False, "Do not train r(z|x) or q(z|x), translate with ", 1),
     "max_pooling_states":(bool, False, False, "Max-pool encoder states instead of averaging them", 1),
@@ -56,7 +63,10 @@ options = {
     "bow_loss_product_bernoulli":(bool, False, False, "Bag-of-words loss is log of a product of independent Bernoulli probs. Otherwise, it is a softmax loss.", 1),
     "reverse_lm":(bool, False, False, "z is also used to produce sentences with a reverse LM", 1),
     "shuffle_lm":(bool, False, False, "z is also used to produce sentences with a shuffled LM instead of a reverse LM", 1),
-    "reverse_lm_shareemb":(bool, False, False, "THe reverse or shuffled LM shares embeddings", 1),
+    "masked_lm": (bool, False, False, "z is also used to produce sentences with a Transformer masked LM instead of a reverse LM", 1),
+    "masked_lm_mask_prob": (float, 0.15, False, "Probability of masking a word in the masked LM", 1),
+    "masked_lm_mask_z_final": (bool, False, False, "In masked LM, feed z in the final FF instead of at the beginning", 1),
+    "reverse_lm_shareemb":(bool, False, False, "The reverse or shuffled LM shares embeddings", 1),
     "disable_KL":(bool, False, False, "Disable KL divergence", 1),
     "logvar":(bool, False, False, "Encoder produces mean and logarithm of variance, instead of mean and stdev", 1),
     "forget_decoder":(bool, False, False, "Re-initialize decoder when loading existing model", 1),
@@ -93,6 +103,9 @@ options = {
     "max_gradient_norm": (float, 5.0, False, "The maximum gradient norm to clip the"
                                              " gradients to, to disable"
                                              " set <= 0.", 3),
+
+    "lr_scheduler": (str, "reduce_on_plateau", False, "The learning rate scheduler used: reduce_on_plateau |"
+                                                      " noam (transformers)", 3),
     "lr_reduce_factor": (float, 0.5, False, "The factor to reduce the learning rate"
                                             " with if no validation improvement is"
                                             "  found.", 3),
@@ -104,6 +117,8 @@ options = {
                                           " learning rate reduction.", 3),
     "min_lr": (float, 1e-5, False, "The minimum learning rate the learning rate"
                                    " scheduler can reduce to.", 3),
+    "lr_warmup": (int, 4000, False, "Learning rate warmup (noam_scheduler)", 3),
+
     "patience": (int, 5, False, "The number of evaluations to continue training for"
                                 " when an improvement has been found.", 3),
     "dropout": (float, 0., False, "The amount of dropout.", 3),

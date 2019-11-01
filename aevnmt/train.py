@@ -77,6 +77,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
     tokens_start = time.time()
     num_tokens = 0
     total_train_loss = 0.
+    total_train_loss_masked_lm = 0.
     num_sentences = 0
     step = 0
     epoch_num = 1
@@ -90,7 +91,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                             hparams, step, summary_writer=summary_writer)
 
         # Update the learning rate scheduler.
-        lr_scheduler_step(lr_schedulers, metrics[hparams.criterion], hparams)
+        lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
 
         ckpt.update(
             epoch_num, step, {f"{hparams.src}-{hparams.tgt}": model},
@@ -141,7 +142,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
 
             #with autograd.detect_anomaly():
             train_result = train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
-                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0, x_to_y=x_to_y,y_to_x=y_to_x)
+                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0, x_to_y=x_to_y,y_to_x=y_to_x, masked_lm_proportion=hparams.masked_lm_mask_prob)
             loss=train_result["loss"]
             # Backpropagate and update gradients.
             loss.backward()
@@ -158,6 +159,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
 
             num_sentences += x_in.size(0)
             total_train_loss += loss.item() * x_in.size(0)
+            total_train_loss_masked_lm +=train_result["masked_lm_log_likelihood"].sum() if not isinstance(train_result["masked_lm_log_likelihood"],float) != 0 else train_result["masked_lm_log_likelihood"]
 
             # Print training stats every now and again.
             if step % hparams.print_every == 0:
@@ -172,24 +174,33 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                         param_norm = p.grad.data.norm(2)
                         print("{}: {}".format(name,param_norm))
 
-
                 grad_norm = gradient_norm(model)
                 print(f"({epoch_num}) step {step}: "
                        f"training loss = {total_train_loss/num_sentences:,.2f} -- "
+                       f"training loss masked LM = {total_train_loss_masked_lm/num_sentences:,.2f} -- "
                        f"{tokens_per_sec:,.0f} tokens/s -- "
                        f"gradient norm = {grad_norm:.2f}")
                 summary_writer.add_scalar("train/loss",
                                           total_train_loss/num_sentences, step)
                 summary_writer.add_histogram("train/z",
                                           train_result["z"], step)
+                for k in train_result:
+                    if k != "z" and k!= "loss":
+                        summary_writer.add_scalar("train/auto-"+k,
+                                              (train_result[k].sum() if (not isinstance(train_result[k], float) and not isinstance(train_result[k], int)) else train_result[k])/num_sentences, step)
+
                 num_tokens = 0
                 tokens_start = time.time()
                 total_train_loss = 0.
+                total_train_loss_masked_lm = 0.
                 num_sentences = 0
 
             # Zero the gradient buffer.
             optimizers["gen"].zero_grad()
             if "inf_z" in optimizers: optimizers["inf_z"].zero_grad()
+
+            # Update the learning rate scheduler if needed.
+            lr_scheduler_step(lr_schedulers, hparams)
 
             # Run evaluation every evaluate_every steps if set.
             if hparams.evaluate_every > 0 and step > 0 and step % hparams.evaluate_every == 0:

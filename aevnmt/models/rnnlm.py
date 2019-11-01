@@ -77,7 +77,7 @@ class RNNLM(nn.Module):
         """
 
         # Compute the loss for each batch element. Logits are of the form [B, T, vocab_size],
-        # whereas the cross-entropy function wants a loss of the form [B, vocab_svocab_sizee, T].
+        # whereas the cross-entropy function wants a loss of the form [B, vocab_size, T].
         logits = logits.permute(0, 2, 1)
         loss = F.cross_entropy(logits, targets, ignore_index=self.pad_idx, reduction="none")
         loss = loss.sum(dim=1)

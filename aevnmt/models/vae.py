@@ -105,7 +105,7 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,masked_lm=None,masked_lm_mask_z_final=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False):
         super().__init__()
 
         self.disable_KL=disable_KL
@@ -120,7 +120,8 @@ class VAE(nn.Module):
         self.language_model_tl=language_model_tl
         self.language_model_rev=language_model_rev
         self.language_model_rev_tl=language_model_rev_tl
-
+        self.masked_lm=masked_lm
+        self.masked_lm_mask_z_final=masked_lm_mask_z_final
 
         self.dropout_layer = nn.Dropout(p=dropout)
 
@@ -143,6 +144,11 @@ class VAE(nn.Module):
                                            nn.Tanh())
         else:
             self.lm_init_layer_rev_tl =None
+
+        if self.masked_lm is not None:
+            self.masked_lm_linear_prediction=nn.Linear(self.masked_lm.input_size + ( self.latent_size if self.masked_lm_mask_z_final else 0),self.language_model.embedder.num_embeddings)
+        else:
+            self.masked_lm_linear_prediction=None
 
         if self.language_model_tl is not None:
             self.inf_network = BilingualInferenceNetwork(src_embedder=self.language_model.embedder,
@@ -195,6 +201,7 @@ class VAE(nn.Module):
         lm_rev_init_layer_parameters=iter(())
         lm_rev_tl_parameters=iter(())
         lm_rev_tl_init_layer_parameters=iter(())
+        masked_lm_parameters=iter(())
         if self.language_model_tl is not None:
             lm_tl_parameters=self.language_model_tl.parameters()
             lm_tl_init_layer_parameters=self.lm_init_layer_tl.parameters()
@@ -204,7 +211,10 @@ class VAE(nn.Module):
         if self.language_model_rev_tl is not None:
             lm_rev_tl_parameters=self.language_model_rev_tl.parameters()
             lm_rev_tl_init_layer_parameters=self.lm_init_layer_rev_tl.parameters()
-        return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters , lm_rev_parameters, lm_rev_init_layer_parameters, lm_rev_tl_parameters, lm_rev_tl_init_layer_parameters  )
+        if self.masked_lm is not None:
+            masked_lm_parameters=chain(self.masked_lm.parameters(),self.masked_lm_linear_prediction.parameters())
+
+        return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters , lm_rev_parameters, lm_rev_init_layer_parameters, lm_rev_tl_parameters, lm_rev_tl_init_layer_parameters, masked_lm_parameters  )
 
     def bow_parameters(self):
         return chain( iter(()) if self.bow_output_layer is None else self.bow_output_layer.parameters()   , iter(()) if self.bow_output_layer_tl is None else self.bow_output_layer_tl.parameters()  )
@@ -290,7 +300,7 @@ class VAE(nn.Module):
             hidden = tile_rnn_hidden(self.lm_init_layer_rev_tl(z), self.language_model_rev_tl.rnn)
             return self.language_model_rev_tl(x, hidden=hidden, z=z if self.feed_z else None)
 
-    def forward(self, x, seq_mask_x, seq_len_x, y,x_rev,y_rev, z,disable_x=False, disable_y=False):
+    def forward(self, x, seq_mask_x, seq_len_x, y,x_rev,y_rev, z,disable_x=False, disable_y=False, x_mlm_masked=None):
 
         # Estimate the Categorical parameters for E[P(x|z)] using the given sample of the latent
         # variable.
@@ -321,7 +331,17 @@ class VAE(nn.Module):
         else:
             bow_logits_tl=None
 
-        return None, lm_logits, None,lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl
+        masked_lm_logits=None
+        if self.masked_lm is not None and x_mlm_masked is not None:
+            masked_lm_result=self.masked_lm( self.language_model.embedder(x_mlm_masked), seq_len_x, z if not self.masked_lm_mask_z_final else None)[0]
+            #masked_lm_result:[B, Tx, emb_size]
+            #z: [B, latent_size]
+            linear_input=masked_lm_result
+            if self.masked_lm_mask_z_final:
+                linear_input= torch.cat([linear_input, z.unsqueeze(1).repeat( 1 ,linear_input.size(1)  ,1) ], dim=-1)
+            masked_lm_logits= self.masked_lm_linear_prediction ( linear_input )
+
+        return None, lm_logits, None,lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,masked_lm_logits
 
     def compute_conditionals(self, x_in, seq_mask_x, seq_len_x, x_out, y_in, y_out, z):
         """
@@ -382,7 +402,7 @@ class VAE(nn.Module):
 
     #TODO: remove tm_logits? target_y?
     def loss(self, tm_logits, lm_logits, targets_y, targets_x, targets_y_rev,targets_x_rev, qz, free_nats=0.,free_nats_per_dimension=False,
-             KL_weight=1., reduction="mean", qz_prediction=None, lm_logits_tl=None, bow_logits=None, bow_logits_tl=None,lm_rev_logits=None,lm_rev_logits_tl=None):
+             KL_weight=1., reduction="mean", qz_prediction=None, lm_logits_tl=None, bow_logits=None, bow_logits_tl=None,lm_rev_logits=None,lm_rev_logits_tl=None, masked_lm_logits=None, masked_lm_mask=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -422,6 +442,14 @@ class VAE(nn.Module):
 
         if lm_rev_logits_tl is not None:
             lm_rev_loss_tl=self.language_model_rev_tl.loss(lm_rev_logits_tl,targets_y_rev,reduction="none")
+
+        masked_lm_loss=0.0
+        if masked_lm_logits is not None:
+            # Compute the loss for each batch element. Logits are of the form [B, T, vocab_size],
+            # whereas the cross-entropy function wants a loss of the form [B, vocab_size, T].
+            masked_lm_logits = masked_lm_logits.permute(0, 2, 1)
+            masked_lm_loss = F.cross_entropy(masked_lm_logits, targets_x, ignore_index=self.pad_idx, reduction="none")*masked_lm_mask.float()
+            masked_lm_loss = masked_lm_loss.sum(dim=1)
 
         num_bow_predictions=0
         if bow_logits is not None:
@@ -499,15 +527,15 @@ class VAE(nn.Module):
         # Compute the KL divergence between the distribution used to sample z, and the prior
         # distribution.
         pz = self.prior().expand(qz.mean.size())
-       
-        #import pdb; pdb.set_trace() 
+
+        #import pdb; pdb.set_trace()
         bow_weight=1
         if bow_logits is not None and self.bernoulli_bow:
             #Ratio between number of LM predictions and number of bow predictions
             bow_weight= lm_logits.size(1)*1.0/(num_bow_predictions*1.0/lm_logits.size(0))
 
         # The loss is the negative ELBO.
-        lm_log_likelihood = -lm_loss - lm_loss_tl - lm_rev_loss - lm_rev_loss_tl
+        lm_log_likelihood = -lm_loss - lm_loss_tl - lm_rev_loss - lm_rev_loss_tl - masked_lm_loss
         bow_log_likelihood = (- bow_loss - bow_loss_tl)*bow_weight
 
         KL=0.0
@@ -535,6 +563,8 @@ class VAE(nn.Module):
         out_dict = {
             'lm_log_likelihood': lm_log_likelihood,
             'bow_log_likelihood': bow_log_likelihood,
+            'lr_lm_log_likelihood' : lm_loss,
+            'masked_lm_log_likelihood' : masked_lm_loss,
             'bow_weight': bow_weight,
             'KL': KL,
             'raw_KL': raw_KL

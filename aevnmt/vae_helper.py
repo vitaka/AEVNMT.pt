@@ -7,7 +7,7 @@ import sparsedists.bernoulli
 
 from aevnmt.data import BucketingParallelDataLoader, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
 from aevnmt.data import create_batch, batch_to_sentences
-from aevnmt.components import RNNEncoder, beam_search, greedy_decode, sampling_decode
+from aevnmt.components import RNNEncoder, beam_search, greedy_decode, sampling_decode, TransformerEncoder
 from aevnmt.models import AEVNMT, RNNLM, VAE
 from .train_utils import create_attention, create_decoder, attention_summary, compute_bleu
 
@@ -58,7 +58,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
 
     rnnlm_rev=None
     rnnlm_tl_rev=None
-    if hparams.reverse_lm:
+    if hparams.reverse_lm or hparams.shuffle_lm:
         rnnlm_rev=RNNLM(vocab_size=vocab_src.size(),
                       emb_size=hparams.emb_size,
                       hidden_size=hparams.hidden_size,
@@ -79,6 +79,14 @@ def create_model(hparams, vocab_src, vocab_tgt):
                               tied_embeddings=hparams.tied_embeddings,
                               add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm_tl.embedder if hparams.reverse_lm_shareemb else None, gate_z=hparams.gate_z)
 
+    masked_lm=None
+    if hparams.masked_lm:
+        masked_lm=TransformerEncoder(input_size=hparams.emb_size,
+                                     num_heads=hparams.transformer_heads,
+                                     num_layers=hparams.num_enc_layers,
+                                     dim_ff=hparams.transformer_hidden,
+                                     dropout=hparams.dropout, z_size=hparams.latent_size if not hparams.masked_lm_mask_z_final else 0)
+
     model = VAE(   emb_size=hparams.emb_size,
                    latent_size=hparams.latent_size,
                    hidden_size=hparams.hidden_size,
@@ -93,12 +101,14 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    language_model_tl=rnnlm_tl,
                    language_model_rev=rnnlm_rev,
                    language_model_rev_tl=rnnlm_tl_rev,
+                   masked_lm=masked_lm,
+                   masked_lm_mask_z_final=hparams.masked_lm_mask_z_final,
                    bow=hparams.bow_loss,
                    disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
-               x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in,hparams, step,add_qz_scale=0.0, x_to_y=False,y_to_x=False):
+               x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in,hparams, step,add_qz_scale=0.0, x_to_y=False,y_to_x=False, masked_lm_proportion=0.15):
     # Use q(z|x,y) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y, add_qz_scale, disable_x=y_to_x, disable_y=x_to_y)
 
@@ -107,8 +117,15 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     else:
         z = qz.rsample()
 
+    #1= mask and predict
+    #0=keep unchanged
+    MASKED_PROPORTION=0.15
+    mlm_mask_positions=torch.rand(x_out.size())
+    mlm_mask_positions= (mlm_mask_positions <= MASKED_PROPORTION ) * seq_mask_x #boolean: True: mask, False: left intact
+    inverse_mlm_mask_positions= ~ mlm_mask_positions # 1: left intact, 0: turn into mask
+
     # Compute the translation and language model logits.
-    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, z,disable_x=x_to_y, disable_y=y_to_x)
+    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl, masked_lm_logits = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, z,disable_x=x_to_y, disable_y=y_to_x,x_mlm_masked=x_out*inverse_mlm_mask_positions.long())
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
@@ -117,12 +134,11 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     else:
         KL_weight = 1.
 
-
     # Compute the loss.
     loss = model.loss(tm_logits, lm_logits, y_out, x_out,y_rev_out,x_rev_out, qz,
                       free_nats=hparams.KL_free_nats,free_nats_per_dimension=hparams.KL_free_nats_per_dimension,
                       KL_weight=KL_weight,
-                      reduction="mean", qz_prediction=None,lm_logits_tl=lm_logits_tl,bow_logits=bow_logits, bow_logits_tl=bow_logits_tl,lm_rev_logits=lm_rev_logits,lm_rev_logits_tl=lm_rev_logits_tl)
+                      reduction="mean", qz_prediction=None,lm_logits_tl=lm_logits_tl,bow_logits=bow_logits, bow_logits_tl=bow_logits_tl,lm_rev_logits=lm_rev_logits,lm_rev_logits_tl=lm_rev_logits_tl,masked_lm_logits=masked_lm_logits,masked_lm_mask=mlm_mask_positions)
     loss["z"]=z
     return loss
 
@@ -132,7 +148,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     # Create the validation dataloader. We can just bucket.
     val_dl = DataLoader(val_data, batch_size=hparams.batch_size,
                         shuffle=False, num_workers=4)
-    val_dl = BucketingParallelDataLoader(val_dl,add_reverse=hparams.reverse_lm)
+    val_dl = BucketingParallelDataLoader(val_dl,add_reverse=hparams.reverse_lm or hparams.shuffle_lm)
 
     val_ppl, val_NLL, val_KL, val_KL_pred, val_ppl_lm, val_NLL_lm, val_ppl_lm_rev, val_NLL_lm_rev = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
 
@@ -460,7 +476,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                     z = qz.sample()
 
                 # Compute the logits according to this sample of z.
-                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in, z)
+                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl, masked_lm_logits  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in, z)
 
                 # Compute log P(x|z_s)
                 log_lm_prob = F.log_softmax(lm_logits, dim=-1)
@@ -571,7 +587,6 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
     val_perplexity_lm = np.exp(val_NLL_lm / num_predictions_lm)
     val_perplexity_lm_rev = np.exp(val_NLL_lm_rev / num_predictions_lm)
     return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, total_KL_prediction/num_sentences, val_perplexity_lm,val_NLL_lm/num_sentences, val_perplexity_lm_rev, val_NLL_lm_rev/num_sentences
-
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
     u1, s1, var1 = fwd_base.mean, fwd_base.stddev, fwd_base.variance
