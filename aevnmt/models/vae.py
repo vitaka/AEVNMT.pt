@@ -105,7 +105,7 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,masked_lm=None,masked_lm_mask_z_final=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,):
         super().__init__()
 
         self.disable_KL=disable_KL
@@ -122,6 +122,8 @@ class VAE(nn.Module):
         self.language_model_rev_tl=language_model_rev_tl
         self.masked_lm=masked_lm
         self.masked_lm_mask_z_final=masked_lm_mask_z_final
+        self.masked_lm_weight=masked_lm_weight
+        self.masked_lm_proportion=masked_lm_proportion
 
         self.dropout_layer = nn.Dropout(p=dropout)
 

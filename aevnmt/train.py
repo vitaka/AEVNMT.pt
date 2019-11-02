@@ -96,7 +96,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
         ckpt.update(
             epoch_num, step, {f"{hparams.src}-{hparams.tgt}": model},
             # we save with respect to BLEU and likelihood
-            bleu=metrics['bleu'], likelihood=metrics['likelihood']
+            bleu=metrics['bleu'], likelihood= metrics['main_likelihood'] if hparams.multi_task_stop_main else metrics['likelihood']
         )
 
     # Start the training loop.
@@ -142,7 +142,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
 
             #with autograd.detect_anomaly():
             train_result = train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
-                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0, x_to_y=x_to_y,y_to_x=y_to_x, masked_lm_proportion=hparams.masked_lm_mask_prob)
+                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0, x_to_y=x_to_y,y_to_x=y_to_x)
             loss=train_result["loss"]
             # Backpropagate and update gradients.
             loss.backward()
