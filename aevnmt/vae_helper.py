@@ -119,9 +119,8 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
 
     #1= mask and predict
     #0=keep unchanged
-    MASKED_PROPORTION=0.15
-    mlm_mask_positions=torch.rand(x_out.size())
-    mlm_mask_positions= (mlm_mask_positions <= MASKED_PROPORTION ) * seq_mask_x #boolean: True: mask, False: left intact
+    mlm_mask_positions=torch.rand(x_out.size(),device=seq_mask_x.device)
+    mlm_mask_positions= (mlm_mask_positions <= masked_lm_proportion ) * seq_mask_x #boolean: True: mask, False: left intact
     inverse_mlm_mask_positions= ~ mlm_mask_positions # 1: left intact, 0: turn into mask
 
     # Compute the translation and language model logits.
