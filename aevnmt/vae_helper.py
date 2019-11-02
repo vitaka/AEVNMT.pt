@@ -562,7 +562,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 log_qz = qz.log_prob(z).sum(dim=1) if not model.disable_KL else 0.0
 
                 # Estimate the importance weighted estimate of (the log of) P(x, y)
-                batch_log_marginals[s] = log_lm_prob + log_lm_prob_tl + log_bow_prob + log_bow_prob_tl + log_lm_prob_rev + log_lm_prob_rev_tl + log_masked_lm_prob + log_pz - log_qz
+                batch_log_marginals[s] = log_lm_prob + log_lm_prob_tl + log_bow_prob + log_bow_prob_tl + log_lm_prob_rev + log_lm_prob_rev_tl + log_masked_lm_prob*model.masked_lm_weight + log_pz - log_qz
                 batch_log_marginals_lm[s] = log_lm_prob + log_pz - log_qz
                 batch_log_marginals_lm_rev[s] = log_lm_prob_rev + log_pz - log_qz
                 batch_log_marginals_masked_lm[s] = log_masked_lm_prob + log_pz - log_qz

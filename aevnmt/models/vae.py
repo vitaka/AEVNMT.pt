@@ -535,9 +535,9 @@ class VAE(nn.Module):
         if bow_logits is not None and self.bernoulli_bow:
             #Ratio between number of LM predictions and number of bow predictions
             bow_weight= lm_logits.size(1)*1.0/(num_bow_predictions*1.0/lm_logits.size(0))
-
+        
         # The loss is the negative ELBO.
-        lm_log_likelihood = -lm_loss - lm_loss_tl - lm_rev_loss - lm_rev_loss_tl - masked_lm_loss
+        lm_log_likelihood = -lm_loss - lm_loss_tl - lm_rev_loss - lm_rev_loss_tl - masked_lm_loss*self.masked_lm_weight
         bow_log_likelihood = (- bow_loss - bow_loss_tl)*bow_weight
 
         KL=0.0
