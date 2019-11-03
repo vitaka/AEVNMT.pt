@@ -58,7 +58,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
 
     rnnlm_rev=None
     rnnlm_tl_rev=None
-    if hparams.reverse_lm or hparams.shuffle_lm:
+    if hparams.reverse_lm:
         rnnlm_rev=RNNLM(vocab_size=vocab_src.size(),
                       emb_size=hparams.emb_size,
                       hidden_size=hparams.hidden_size,
@@ -70,6 +70,29 @@ def create_model(hparams, vocab_src, vocab_tgt):
                       add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm.embedder if hparams.reverse_lm_shareemb else None, gate_z=hparams.gate_z)
         if  hparams.vae_tl_lm:
                 rnnlm_tl_rev = RNNLM(vocab_size=vocab_tgt.size(),
+                              emb_size=hparams.emb_size,
+                              hidden_size=hparams.hidden_size,
+                              pad_idx=vocab_tgt[PAD_TOKEN],
+                              dropout=hparams.dropout,
+                              num_layers=hparams.num_dec_layers,
+                              cell_type=hparams.cell_type,
+                              tied_embeddings=hparams.tied_embeddings,
+                              add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm_tl.embedder if hparams.reverse_lm_shareemb else None, gate_z=hparams.gate_z)
+
+    rnnlm_shuf=None
+    rnnlm_tl_shuf=None
+    if hparams.shuffle_lm:
+        rnnlm_shuf=RNNLM(vocab_size=vocab_src.size(),
+                      emb_size=hparams.emb_size,
+                      hidden_size=hparams.hidden_size,
+                      pad_idx=vocab_src[PAD_TOKEN],
+                      dropout=hparams.dropout,
+                      num_layers=hparams.num_dec_layers,
+                      cell_type=hparams.cell_type,
+                      tied_embeddings=hparams.tied_embeddings,
+                      add_input_size= hparams.latent_size if hparams.feed_z else 0, embedder=rnnlm.embedder if hparams.reverse_lm_shareemb else None, gate_z=hparams.gate_z)
+        if  hparams.vae_tl_lm:
+                rnnlm_tl_shuf = RNNLM(vocab_size=vocab_tgt.size(),
                               emb_size=hparams.emb_size,
                               hidden_size=hparams.hidden_size,
                               pad_idx=vocab_tgt[PAD_TOKEN],
@@ -101,6 +124,8 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    language_model_tl=rnnlm_tl,
                    language_model_rev=rnnlm_rev,
                    language_model_rev_tl=rnnlm_tl_rev,
+                   language_model_shuf=rnnlm_shuf,
+                   language_model_shuf_tl=rnnlm_tl_shuf,
                    masked_lm=masked_lm,
                    masked_lm_mask_z_final=hparams.masked_lm_mask_z_final,
                    masked_lm_weight=1.0 if not hparams.masked_lm_weight_prop_prob else 1/hparams.masked_lm_mask_prob,
@@ -110,7 +135,9 @@ def create_model(hparams, vocab_src, vocab_tgt):
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
-               x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in,hparams, step,add_qz_scale=0.0, x_to_y=False,y_to_x=False):
+               x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in,
+               x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in, y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
+               hparams, step,add_qz_scale=0.0, x_to_y=False,y_to_x=False):
     # Use q(z|x,y) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y, add_qz_scale, disable_x=y_to_x, disable_y=x_to_y)
 
@@ -126,7 +153,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     inverse_mlm_mask_positions= ~ mlm_mask_positions # 1: left intact, 0: turn into mask
 
     # Compute the translation and language model logits.
-    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl, masked_lm_logits = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, z,disable_x=x_to_y, disable_y=y_to_x,x_mlm_masked=x_out*inverse_mlm_mask_positions.long())
+    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, noisy_x_shuf_in, noisy_y_shuf_in, z,disable_x=x_to_y, disable_y=y_to_x,x_mlm_masked=x_out*inverse_mlm_mask_positions.long())
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
@@ -136,7 +163,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
         KL_weight = 1.
 
     # Compute the loss.
-    loss = model.loss(tm_logits, lm_logits, y_out, x_out,y_rev_out,x_rev_out, qz,
+    loss = model.loss(tm_logits, lm_logits, y_out, x_out,y_rev_out,x_rev_out,y_shuf_out,x_shuf_out, qz,
                       free_nats=hparams.KL_free_nats,free_nats_per_dimension=hparams.KL_free_nats_per_dimension,
                       KL_weight=KL_weight,
                       reduction="mean", qz_prediction=None,lm_logits_tl=lm_logits_tl,bow_logits=bow_logits, bow_logits_tl=bow_logits_tl,lm_rev_logits=lm_rev_logits,lm_rev_logits_tl=lm_rev_logits_tl,masked_lm_logits=masked_lm_logits,masked_lm_mask=mlm_mask_positions)
@@ -151,7 +178,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
                         shuffle=False, num_workers=4)
     val_dl = BucketingParallelDataLoader(val_dl,add_reverse=hparams.reverse_lm or hparams.shuffle_lm)
 
-    val_ppl, val_NLL, val_KL, val_KL_pred, val_ppl_lm, val_NLL_lm, val_ppl_lm_rev, val_NLL_lm_rev, val_ppl_masked_lm, val_NLL_masked_lm = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
+    val_ppl, val_NLL, val_KL, val_KL_pred, val_ppl_lm, val_NLL_lm, val_ppl_lm_rev, val_NLL_lm_rev,val_ppl_lm_shuf, val_NLL_lm_shuf, val_ppl_masked_lm, val_NLL_masked_lm = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
 
     val_bleu_ref, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
                                                   device, hparams)
@@ -176,6 +203,8 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
           f" -- validation NLL LM = {val_NLL_lm:,.2f}"
           f" -- validation perplexity LM rev = {val_ppl_lm_rev:,.2f}"
           f" -- validation NLL LM rev = {val_NLL_lm_rev:,.2f}"
+          f" -- validation perplexity LM shuf = {val_ppl_lm_shuf:,.2f}"
+          f" -- validation NLL LM shuf = {val_NLL_lm_shuf:,.2f}"
           f" -- validation perplexity masked LM = {val_ppl_masked_lm:,.2f}"
           f" -- validation NLL masked LM = {val_NLL_masked_lm:,.2f}"
           f" -- validation BLEU reference= {val_bleu_ref:.2f}"
@@ -209,6 +238,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
         summary_writer.add_scalar(f"{title}/validation/perplexity", val_ppl, step)
         summary_writer.add_scalar(f"{title}/validation/NLL_LM", val_NLL_lm, step)
         summary_writer.add_scalar(f"{title}/validation/NLL_rev_LM", val_NLL_lm_rev, step)
+        summary_writer.add_scalar(f"{title}/validation/NLL_shuf_LM", val_NLL_lm_shuf, step)
         summary_writer.add_scalar(f"{title}/validation/NLL_masked_LM", val_NLL_masked_lm, step)
 
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl, 'main_likelihood': -val_NLL_lm}
@@ -406,6 +436,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
         log_marginal = 0.
         log_marginal_lm = 0.0
         log_marginal_lm_rev = 0.0
+        log_marginal_lm_shuf = 0.0
         log_marginal_masked_lm = 0.0
 
         total_KL = 0.
@@ -414,10 +445,11 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
         if model.disable_KL:
             n_samples=1
         for sentences_tuple in val_dl:
-            if model.language_model_rev is not None:
-                sentences_x, sentences_y, sentences_x_rev, sentences_y_rev = sentences_tuple
+            if model.language_model_rev is not None or model.language_model_shuf is not None:
+                sentences_x, sentences_y, sentences_x_rev, sentences_y_rev, sentences_x_shuf, sentences_y_shuf = sentences_tuple
             else:
                 sentences_x, sentences_y = sentences_tuple
+
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
             y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
 
@@ -427,6 +459,13 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             else:
                 x_rev_in= x_rev_out= seq_mask_x_rev= seq_len_x_rev=None
                 y_rev_in= y_rev_out= seq_mask_y_rev= seq_len_y_rev=None
+
+            if model.language_model_shuf is not None:
+                x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf = create_batch(sentences_x_shuf, vocab_src, device)
+                y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf = create_batch(sentences_y_shuf, vocab_tgt, device)
+            else:
+                x_shuf_in= x_shuf_out= seq_mask_x_shuf= seq_len_x_shuf=None
+                y_shuf_in= y_shuf_out= seq_mask_y_shuf= seq_len_y_shuf=None
 
 
             # Infer q(z|x) for this batch.
@@ -440,6 +479,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             batch_log_marginals = torch.zeros(n_samples, batch_size)
             batch_log_marginals_lm = torch.zeros(n_samples, batch_size)
             batch_log_marginals_lm_rev = torch.zeros(n_samples, batch_size)
+            batch_log_marginals_lm_shuf = torch.zeros(n_samples, batch_size)
             batch_log_marginals_masked_lm = torch.zeros(n_samples, batch_size)
 
             #Compute bow for each sentence
@@ -488,7 +528,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                     inverse_mlm_mask_positions= ~ mlm_mask_positions # 1: left intact, 0: turn into mask
 
                 # Compute the logits according to this sample of z.
-                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl, masked_lm_logits  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in, z,x_mlm_masked=x_out*inverse_mlm_mask_positions.long())
+                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in,x_shuf_in,y_shuf_in, z,x_mlm_masked=x_out*inverse_mlm_mask_positions.long())
 
                 # Compute log P(x|z_s)
                 log_lm_prob = F.log_softmax(lm_logits, dim=-1)
@@ -512,6 +552,18 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                     log_lm_prob_rev_tl = F.log_softmax(lm_rev_logits_tl, dim=-1)
                     log_lm_prob_rev_tl = torch.gather(log_lm_prob_rev_tl, 2, y_rev_out.unsqueeze(-1)).squeeze()
                     log_lm_prob_rev_tl = (seq_mask_y_rev.type_as(log_lm_prob_rev_tl) * log_lm_prob_rev_tl).sum(dim=1)
+
+                log_lm_prob_shuf=0.0
+                if lm_shuf_logits is not None:
+                    log_lm_prob_shuf = F.log_softmax(lm_shuf_logits, dim=-1)
+                    log_lm_prob_shuf = torch.gather(log_lm_prob_shuf, 2, x_shuf_out.unsqueeze(-1)).squeeze()
+                    log_lm_prob_shuf = (seq_mask_x_shuf.type_as(log_lm_prob_shuf) * log_lm_prob_shuf).sum(dim=1)
+
+                log_lm_prob_shuf_tl=0.0
+                if lm_shuf_logits_tl is not None:
+                    log_lm_prob_shuf_tl = F.log_softmax(lm_shuf_logits_tl, dim=-1)
+                    log_lm_prob_shuf_tl = torch.gather(log_lm_prob_shuf_tl, 2, y_shuf_out.unsqueeze(-1)).squeeze()
+                    log_lm_prob_shuf_tl = (seq_mask_y_shuf.type_as(log_lm_prob_shuf_tl) * log_lm_prob_shuf_tl).sum(dim=1)
 
                 log_masked_lm_prob=0.0
                 if masked_lm_logits is not None:
@@ -562,9 +614,10 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 log_qz = qz.log_prob(z).sum(dim=1) if not model.disable_KL else 0.0
 
                 # Estimate the importance weighted estimate of (the log of) P(x, y)
-                batch_log_marginals[s] = log_lm_prob + log_lm_prob_tl + log_bow_prob + log_bow_prob_tl + log_lm_prob_rev + log_lm_prob_rev_tl + log_masked_lm_prob*model.masked_lm_weight + log_pz - log_qz
+                batch_log_marginals[s] = log_lm_prob + log_lm_prob_tl + log_bow_prob + log_bow_prob_tl + log_lm_prob_rev + log_lm_prob_rev_tl + log_lm_prob_shuf + log_lm_prob_shuf_tl + log_masked_lm_prob*model.masked_lm_weight + log_pz - log_qz
                 batch_log_marginals_lm[s] = log_lm_prob + log_pz - log_qz
                 batch_log_marginals_lm_rev[s] = log_lm_prob_rev + log_pz - log_qz
+                batch_log_marginals_lm_shuf[s] = log_lm_prob_shuf + log_pz - log_qz
                 batch_log_marginals_masked_lm[s] = log_masked_lm_prob + log_pz - log_qz
 
 
@@ -575,12 +628,15 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                                  torch.log(torch.Tensor([n_samples]))
             batch_log_marginals_lm_rev = torch.logsumexp(batch_log_marginals_lm_rev, dim=0) - \
                                  torch.log(torch.Tensor([n_samples]))
+            batch_log_marginals_lm_shuf = torch.logsumexp(batch_log_marginals_lm_shuf, dim=0) - \
+                                 torch.log(torch.Tensor([n_samples]))
             batch_log_marginals_masked_lm = torch.logsumexp(batch_log_marginals_masked_lm, dim=0) - \
                                  torch.log(torch.Tensor([n_samples]))
 
             log_marginal += batch_log_marginal.sum().item() # [B] -> []
             log_marginal_lm += batch_log_marginal_lm.sum().item()
             log_marginal_lm_rev += batch_log_marginals_lm_rev.sum().item()
+            log_marginal_lm_shuf += batch_log_marginals_lm_rev.sum().item()
             log_marginal_masked_lm += batch_log_marginals_masked_lm.sum().item()
 
             num_sentences += batch_size
@@ -593,6 +649,10 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 num_predictions += (seq_len_x_rev.sum() ).item()
             if lm_rev_logits_tl is not None:
                 num_predictions += (seq_len_y_rev.sum() ).item()
+            if lm_shuf_logits is not None:
+                num_predictions += (seq_len_x_shuf.sum() ).item()
+            if lm_shuf_logits_tl is not None:
+                num_predictions += (seq_len_y_shuf.sum() ).item()
             if masked_lm_logits is not None:
                 num_predictions+= (seq_len_x.sum() ).item()*model.masked_lm_proportion
 
@@ -606,13 +666,15 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
     val_NLL = -log_marginal
     val_NLL_lm= -log_marginal_lm
     val_NLL_lm_rev = -log_marginal_lm_rev
+    val_NLL_lm_shuf = -log_marginal_lm_shuf
     val_NLL_masked_lm= - log_marginal_masked_lm
 
     val_perplexity = np.exp(val_NLL / num_predictions)
     val_perplexity_lm = np.exp(val_NLL_lm / num_predictions_lm)
     val_perplexity_lm_rev = np.exp(val_NLL_lm_rev / num_predictions_lm)
+    val_perplexity_lm_shuf = np.exp(val_NLL_lm_shuf / num_predictions_lm)
     val_perplexity_masked_lm = np.exp(val_NLL_masked_lm / num_predictions_masked_lm)
-    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, total_KL_prediction/num_sentences, val_perplexity_lm,val_NLL_lm/num_sentences, val_perplexity_lm_rev, val_NLL_lm_rev/num_sentences,val_perplexity_masked_lm, val_NLL_masked_lm/num_sentences
+    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, total_KL_prediction/num_sentences, val_perplexity_lm,val_NLL_lm/num_sentences, val_perplexity_lm_rev, val_NLL_lm_rev/num_sentences, val_perplexity_lm_shuf, val_NLL_lm_shuf/num_sentences, val_perplexity_masked_lm, val_NLL_masked_lm/num_sentences
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
     u1, s1, var1 = fwd_base.mean, fwd_base.stddev, fwd_base.variance

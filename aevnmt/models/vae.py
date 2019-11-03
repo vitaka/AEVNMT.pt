@@ -105,7 +105,7 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,language_model_shuf,language_model_shuf_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,):
         super().__init__()
 
         self.disable_KL=disable_KL
@@ -120,6 +120,8 @@ class VAE(nn.Module):
         self.language_model_tl=language_model_tl
         self.language_model_rev=language_model_rev
         self.language_model_rev_tl=language_model_rev_tl
+        self.language_model_shuf=language_model_shuf
+        self.language_model_shuf_tl=language_model_shuf_tl
         self.masked_lm=masked_lm
         self.masked_lm_mask_z_final=masked_lm_mask_z_final
         self.masked_lm_weight=masked_lm_weight
@@ -146,6 +148,18 @@ class VAE(nn.Module):
                                            nn.Tanh())
         else:
             self.lm_init_layer_rev_tl =None
+
+        if self.language_model_shuf is not None:
+            self.lm_init_layer_shuf = nn.Sequential(nn.Linear(latent_size, language_model_shuf.hidden_size),
+                                           nn.Tanh())
+        else:
+            self.lm_init_layer_shuf =None
+
+        if self.language_model_shuf_tl is not None:
+            self.lm_init_layer_shuf_tl = nn.Sequential(nn.Linear(latent_size, language_model_shuf_tl.hidden_size),
+                                           nn.Tanh())
+        else:
+            self.lm_init_layer_shuf_tl =None
 
         if self.masked_lm is not None:
             self.masked_lm_linear_prediction=nn.Linear(self.masked_lm.input_size + ( self.latent_size if self.masked_lm_mask_z_final else 0),self.language_model.embedder.num_embeddings)
@@ -203,6 +217,11 @@ class VAE(nn.Module):
         lm_rev_init_layer_parameters=iter(())
         lm_rev_tl_parameters=iter(())
         lm_rev_tl_init_layer_parameters=iter(())
+        lm_shuf_parameters=iter(())
+        lm_shuf_init_layer_parameters=iter(())
+        lm_shuf_tl_parameters=iter(())
+        lm_shuf_tl_init_layer_parameters=iter(())
+
         masked_lm_parameters=iter(())
         if self.language_model_tl is not None:
             lm_tl_parameters=self.language_model_tl.parameters()
@@ -213,10 +232,18 @@ class VAE(nn.Module):
         if self.language_model_rev_tl is not None:
             lm_rev_tl_parameters=self.language_model_rev_tl.parameters()
             lm_rev_tl_init_layer_parameters=self.lm_init_layer_rev_tl.parameters()
+
+        if self.language_model_shuf is not None:
+            lm_shuf_parameters=self.language_model_shuf.parameters()
+            lm_shuf_init_layer_parameters=self.lm_init_layer_shuf.parameters()
+        if self.language_model_shuf_tl is not None:
+            lm_shuf_tl_parameters=self.language_model_shuf_tl.parameters()
+            lm_shuf_tl_init_layer_parameters=self.lm_init_layer_shuf_tl.parameters()
+
         if self.masked_lm is not None:
             masked_lm_parameters=chain(self.masked_lm.parameters(),self.masked_lm_linear_prediction.parameters())
 
-        return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters , lm_rev_parameters, lm_rev_init_layer_parameters, lm_rev_tl_parameters, lm_rev_tl_init_layer_parameters, masked_lm_parameters  )
+        return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters , lm_rev_parameters, lm_rev_init_layer_parameters, lm_rev_tl_parameters, lm_rev_tl_init_layer_parameters,               lm_shuf_parameters, lm_shuf_init_layer_parameters, lm_shuf_tl_parameters, lm_shuf_tl_init_layer_parameters  , masked_lm_parameters  )
 
     def bow_parameters(self):
         return chain( iter(()) if self.bow_output_layer is None else self.bow_output_layer.parameters()   , iter(()) if self.bow_output_layer_tl is None else self.bow_output_layer_tl.parameters()  )
@@ -274,35 +301,47 @@ class VAE(nn.Module):
         hidden = tile_rnn_hidden(self.lm_init_layer_tl(z), self.language_model_tl.rnn)
         return hidden
 
-    def run_language_model(self, x, z, reverse=False):
+    def run_language_model(self, x, z, reverse=False, shuffled=False):
+        #TODO: shuf
         """
         Runs the language_model.
 
         :param x: unembedded source sentence
         :param z: a sample of the latent variable
         """
-        if not reverse:
-            hidden = tile_rnn_hidden(self.lm_init_layer(z), self.language_model.rnn)
-            return self.language_model(x, hidden=hidden, z=z if self.feed_z else None)
-        else:
-            hidden = tile_rnn_hidden(self.lm_init_layer_rev(z), self.language_model_rev.rnn)
-            return self.language_model_rev(x, hidden=hidden, z=z if self.feed_z else None)
+        lm=self.language_model
+        init=self.lm_init_layer
 
-    def run_language_model_tl(self, x, z, reverse=False):
+        if reverse:
+            lm=self.language_model_rev
+            init=self.lm_init_layer_rev
+        if shuffled:
+            lm=self.language_model_shuf
+            init=self.lm_init_layer_shuf
+
+        hidden=tile_rnn_hidden(init(z), lm.rnn)
+        return lm(x, hidden=hidden, z=z if self.feed_z else None)
+
+    def run_language_model_tl(self, x, z, reverse=False, shuffled=False):
         """
         Runs the language_model.
 
         :param x: unembedded source sentence
         :param z: a sample of the latent variable
         """
-        if not reverse:
-            hidden = tile_rnn_hidden(self.lm_init_layer_tl(z), self.language_model_tl.rnn)
-            return self.language_model_tl(x, hidden=hidden, z=z if self.feed_z else None)
-        else:
-            hidden = tile_rnn_hidden(self.lm_init_layer_rev_tl(z), self.language_model_rev_tl.rnn)
-            return self.language_model_rev_tl(x, hidden=hidden, z=z if self.feed_z else None)
 
-    def forward(self, x, seq_mask_x, seq_len_x, y,x_rev,y_rev, z,disable_x=False, disable_y=False, x_mlm_masked=None):
+        if reverse:
+            lm=self.language_model_rev_tl
+            init=self.lm_init_layer_rev_tl
+        if shuffled:
+            lm=self.language_model_shuf_tl
+            init=self.lm_init_layer_shuf_tl
+
+        hidden=tile_rnn_hidden(init(z), lm.rnn)
+        return lm(x, hidden=hidden, z=z if self.feed_z else None)
+
+
+    def forward(self, x, seq_mask_x, seq_len_x, y,x_rev,y_rev,x_shuf,y_shuf, z,disable_x=False, disable_y=False, x_mlm_masked=None):
 
         # Estimate the Categorical parameters for E[P(x|z)] using the given sample of the latent
         # variable.
@@ -321,6 +360,15 @@ class VAE(nn.Module):
 
         if self.language_model_rev_tl is not None and not disable_y:
             lm_rev_logits_tl=self.run_language_model_tl(y_rev,z,reverse=True)
+
+        lm_shuf_logits=None
+        lm_shuf_logits_tl=None
+
+        if self.language_model_shuf is not None and not disable_x:
+            lm_shuf_logits=self.run_language_model(x_shuf,z,shuffled=True)
+
+        if self.language_model_shuf_tl is not None and not disable_y:
+            lm_shuf_logits_tl=self.run_language_model_tl(y_shuf,z,shuffled=True)
 
         #TODO: think about dropout too
         if self.bow_output_layer is not None and not disable_x:
@@ -343,7 +391,7 @@ class VAE(nn.Module):
                 linear_input= torch.cat([linear_input, z.unsqueeze(1).repeat( 1 ,linear_input.size(1)  ,1) ], dim=-1)
             masked_lm_logits= self.masked_lm_linear_prediction ( linear_input )
 
-        return None, lm_logits, None,lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,masked_lm_logits
+        return None, lm_logits, None,lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl,masked_lm_logits
 
     def compute_conditionals(self, x_in, seq_mask_x, seq_len_x, x_out, y_in, y_out, z):
         """
@@ -403,8 +451,8 @@ class VAE(nn.Module):
 
 
     #TODO: remove tm_logits? target_y?
-    def loss(self, tm_logits, lm_logits, targets_y, targets_x, targets_y_rev,targets_x_rev, qz, free_nats=0.,free_nats_per_dimension=False,
-             KL_weight=1., reduction="mean", qz_prediction=None, lm_logits_tl=None, bow_logits=None, bow_logits_tl=None,lm_rev_logits=None,lm_rev_logits_tl=None, masked_lm_logits=None, masked_lm_mask=None):
+    def loss(self, tm_logits, lm_logits, targets_y, targets_x, targets_y_rev,targets_x_rev,targets_y_shuf,targets_x_shuf, qz, free_nats=0.,free_nats_per_dimension=False,
+             KL_weight=1., reduction="mean", qz_prediction=None, lm_logits_tl=None, bow_logits=None, bow_logits_tl=None,lm_rev_logits=None,lm_rev_logits_tl=None,lm_shuf_logits=None,lm_shuf_logits_tl=None, masked_lm_logits=None, masked_lm_mask=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -444,6 +492,15 @@ class VAE(nn.Module):
 
         if lm_rev_logits_tl is not None:
             lm_rev_loss_tl=self.language_model_rev_tl.loss(lm_rev_logits_tl,targets_y_rev,reduction="none")
+
+        lm_shuf_loss=0.0
+        lm_shuf_loss_tl=0.0
+
+        if lm_shuf_logits is not None:
+            lm_shuf_loss=self.language_model_shuf.loss(lm_shuf_logits,targets_x_shuf,reduction="none")
+
+        if lm_shuf_logits_tl is not None:
+            lm_shuf_loss_tl=self.language_model_shuf_tl.loss(lm_shuf_logits_tl,targets_y_shuf,reduction="none")
 
         masked_lm_loss=0.0
         if masked_lm_logits is not None:
@@ -535,9 +592,9 @@ class VAE(nn.Module):
         if bow_logits is not None and self.bernoulli_bow:
             #Ratio between number of LM predictions and number of bow predictions
             bow_weight= lm_logits.size(1)*1.0/(num_bow_predictions*1.0/lm_logits.size(0))
-        
+
         # The loss is the negative ELBO.
-        lm_log_likelihood = -lm_loss - lm_loss_tl - lm_rev_loss - lm_rev_loss_tl - masked_lm_loss*self.masked_lm_weight
+        lm_log_likelihood = -lm_loss - lm_loss_tl - lm_rev_loss - lm_rev_loss_tl - lm_shuf_loss - lm_shuf_loss_tl - masked_lm_loss*self.masked_lm_weight
         bow_log_likelihood = (- bow_loss - bow_loss_tl)*bow_weight
 
         KL=0.0
@@ -566,6 +623,8 @@ class VAE(nn.Module):
             'lm_log_likelihood': lm_log_likelihood,
             'bow_log_likelihood': bow_log_likelihood,
             'lr_lm_log_likelihood' : lm_loss,
+            'rev_lm_log_likelihood' : lm_rev_loss,
+            'shuf_lm_log_likelihood' : lm_shuf_loss,
             'masked_lm_log_likelihood' : masked_lm_loss,
             'bow_weight': bow_weight,
             'KL': KL,

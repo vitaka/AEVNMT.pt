@@ -11,23 +11,23 @@ from aevnmt.data.textprocessing import TextProcess
 class ParallelDataset(Dataset):
 
     def __init__(self, src_file, tgt_file, max_length=-1,add_reverse=False, add_shuffled=False):
-        assert not (add_reverse and add_shuffled)
+
         self.data = []
         with open(src_file) as sf, open(tgt_file) as tf:
             for src, tgt in zip(sf, tf):
-                src = src.strip()
+                src = src_rev = src_shuf = src.strip()
                 src_length = len(src.split())
-                tgt = tgt.strip()
+                tgt = tgt_rev = tgt_shuf = tgt.strip()
                 tgt_length = len(tgt.split())
                 if add_reverse:
                     src_rev=" ".join(src.split(" ")[::-1])
                     tgt_rev=" ".join(tgt.split(" ")[::-1])
                 if add_shuffled:
-                    src_rev=" ".join(np.random.permutation(src.split(" ")))
-                    tgt_rev=" ".join(np.random.permutation(tgt.split(" ")))
+                    src_shuf=" ".join(np.random.permutation(src.split(" ")))
+                    tgt_shuf=" ".join(np.random.permutation(tgt.split(" ")))
                 if max_length < 0 or (src_length <= max_length and tgt_length <= max_length):
                     if add_reverse or add_shuffled:
-                        self.data.append((src, tgt,src_rev,tgt_rev))
+                        self.data.append((src, tgt,src_rev,tgt_rev,src_shuf,tgt_shuf))
                     else:
                         self.data.append((src, tgt))
 

@@ -105,9 +105,10 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
         # Train for 1 epoch.
         for sentences_tuple in bucketing_dl:
             if hparams.reverse_lm or hparams.shuffle_lm:
-                sentences_x, sentences_y, sentences_x_rev, sentences_y_rev =sentences_tuple
+                sentences_x, sentences_y, sentences_x_rev, sentences_y_rev, sentences_x_shuf, sentences_y_shuf =sentences_tuple
             else:
                 sentences_x, sentences_y =sentences_tuple
+                sentences_x_rev =sentences_y_rev =sentences_x_shuf= sentences_y_shuf=None
             model.train()
 
             # Perform a forward pass through the model
@@ -118,7 +119,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                 sentences_y, vocab_tgt, device,
                 word_dropout=hparams.word_dropout)
 
-            if hparams.reverse_lm or hparams.shuffle_lm:
+            if sentences_x_rev is not None:
                 x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in = create_noisy_batch(
                     sentences_x_rev, vocab_src, device,
                     word_dropout=hparams.word_dropout)
@@ -128,6 +129,18 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             else:
                 x_rev_in= x_rev_out= seq_mask_x_rev= seq_len_x_rev= noisy_x_rev_in =None
                 y_rev_in= y_rev_out= seq_mask_y_rev= seq_len_y_rev= noisy_y_rev_in=None
+
+            if sentences_x_shuf is not None:
+                x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in = create_noisy_batch(
+                    sentences_x_shuf, vocab_src, device,
+                    word_dropout=hparams.word_dropout)
+                y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in = create_noisy_batch(
+                    sentences_y_shuf, vocab_tgt, device,
+                    word_dropout=hparams.word_dropout)
+            else:
+                x_shuf_in= x_shuf_out= seq_mask_x_shuf= seq_len_x_shuf= noisy_x_shuf_in =None
+                y_shuf_in= y_shuf_out= seq_mask_y_shuf= seq_len_y_shuf= noisy_y_shuf_in=None
+
 
             x_to_y=False
             y_to_x=False
@@ -142,7 +155,8 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
 
             #with autograd.detect_anomaly():
             train_result = train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
-                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0, x_to_y=x_to_y,y_to_x=y_to_x)
+                              y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, x_rev_in, x_rev_out, seq_mask_x_rev, seq_len_x_rev, noisy_x_rev_in, y_rev_in, y_rev_out, seq_mask_y_rev, seq_len_y_rev, noisy_y_rev_in,
+                              x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in, y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in, hparams, step, add_qz_scale=0.00000001 if step<=hparams.avoid_zero_scale_during else 0.0, x_to_y=x_to_y,y_to_x=y_to_x)
             loss=train_result["loss"]
             # Backpropagate and update gradients.
             loss.backward()
@@ -155,7 +169,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             if "inf_z" in optimizers: optimizers["inf_z"].step()
 
             # Update statistics.
-            num_tokens += (seq_len_x.sum() + seq_len_y.sum()).item() *(2 if hparams.reverse_lm else 1)
+            num_tokens += (seq_len_x.sum() + seq_len_y.sum()).item() *( 1 + (1 if hparams.reverse_lm else 0) + (1 if hparams.shuffle_lm else 0) )
 
             num_sentences += x_in.size(0)
             total_train_loss += loss.item() * x_in.size(0)

@@ -12,7 +12,7 @@ class BucketingParallelDataLoader:
         self.it = iter(dataloader)
         self.n = n
         self.add_reverse=add_reverse
-        
+
         self._sort_next_batches()
         self.batch_size = dataloader.batch_size
 
@@ -24,9 +24,11 @@ class BucketingParallelDataLoader:
         tgt_batches = []
         src_rev_batches= []
         tgt_rev_batches= []
+        src_shuf_batches= []
+        tgt_shuf_batches= []
         for batch in self.it:
             if self.add_reverse:
-                src_batch, tgt_batch, src_rev_batch, tgt_rev_batch = batch
+                src_batch, tgt_batch, src_rev_batch, tgt_rev_batch, src_shuf_batch, tgt_shuf_batch = batch
             else:
                 src_batch, tgt_batch = batch
             src_batches += src_batch
@@ -34,6 +36,8 @@ class BucketingParallelDataLoader:
             if self.add_reverse:
                 src_rev_batches+=src_rev_batch
                 tgt_rev_batches+=tgt_rev_batch
+                src_shuf_batches+=src_shuf_batch
+                tgt_shuf_batches+=tgt_shuf_batch
             count += 1
             if count == self.n:
                 break
@@ -61,6 +65,12 @@ class BucketingParallelDataLoader:
             self.sorted_src_rev_batches = src_rev_batches[sort_keys]
             self.sorted_tgt_rev_batches = tgt_rev_batches[sort_keys]
 
+            src_shuf_batches = np.array(src_shuf_batches)
+            tgt_shuf_batches = np.array(tgt_shuf_batches)
+
+            self.sorted_src_shuf_batches = src_shuf_batches[sort_keys]
+            self.sorted_tgt_shuf_batches = tgt_shuf_batches[sort_keys]
+
         self.idx = 0
 
     def __iter__(self):
@@ -74,7 +84,7 @@ class BucketingParallelDataLoader:
         self.idx += self.batch_size
         if self.add_reverse:
             return (self.sorted_src_batches[start_idx:end_idx],
-                self.sorted_tgt_batches[start_idx:end_idx],self.sorted_src_rev_batches[start_idx:end_idx],self.sorted_tgt_rev_batches[start_idx:end_idx])
+                self.sorted_tgt_batches[start_idx:end_idx],self.sorted_src_rev_batches[start_idx:end_idx],self.sorted_tgt_rev_batches[start_idx:end_idx],self.sorted_src_shuf_batches[start_idx:end_idx],self.sorted_tgt_shuf_batches[start_idx:end_idx])
         else:
             return (self.sorted_src_batches[start_idx:end_idx],
                 self.sorted_tgt_batches[start_idx:end_idx])
