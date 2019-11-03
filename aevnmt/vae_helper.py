@@ -140,7 +140,6 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
                hparams, step,add_qz_scale=0.0, x_to_y=False,y_to_x=False):
     # Use q(z|x,y) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in,seq_mask_y, seq_len_y, add_qz_scale, disable_x=y_to_x, disable_y=x_to_y)
-
     if model.disable_KL:
         z=qz.mean
     else:
@@ -166,7 +165,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     loss = model.loss(tm_logits, lm_logits, y_out, x_out,y_rev_out,x_rev_out,y_shuf_out,x_shuf_out, qz,
                       free_nats=hparams.KL_free_nats,free_nats_per_dimension=hparams.KL_free_nats_per_dimension,
                       KL_weight=KL_weight,
-                      reduction="mean", qz_prediction=None,lm_logits_tl=lm_logits_tl,bow_logits=bow_logits, bow_logits_tl=bow_logits_tl,lm_rev_logits=lm_rev_logits,lm_rev_logits_tl=lm_rev_logits_tl,masked_lm_logits=masked_lm_logits,masked_lm_mask=mlm_mask_positions)
+                      reduction="mean", qz_prediction=None,lm_logits_tl=lm_logits_tl,bow_logits=bow_logits, bow_logits_tl=bow_logits_tl,lm_rev_logits=lm_rev_logits,lm_rev_logits_tl=lm_rev_logits_tl,lm_shuf_logits=lm_shuf_logits,lm_shuf_logits_tl=lm_shuf_logits_tl,masked_lm_logits=masked_lm_logits,masked_lm_mask=mlm_mask_positions)
     loss["z"]=z
     return loss
 
