@@ -130,6 +130,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    masked_lm_mask_z_final=hparams.masked_lm_mask_z_final,
                    masked_lm_weight=1.0 if not hparams.masked_lm_weight_prop_prob else 1/hparams.masked_lm_mask_prob,
                    masked_lm_proportion=hparams.masked_lm_mask_prob,
+                   masked_lm_bert=hparams.masked_lm_bert,
                    bow=hparams.bow_loss,
                    disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli)
     return model
@@ -151,8 +152,20 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     mlm_mask_positions= (mlm_mask_positions <= model.masked_lm_proportion ) * seq_mask_x #boolean: True: mask, False: left intact
     inverse_mlm_mask_positions= ~ mlm_mask_positions # 1: left intact, 0: turn into mask
 
+    #import pdb; pdb.set_trace()
+    if model.masked_lm_bert:
+        #Now, mask as in the BERT paper
+        random_vocab_x=torch.randint(4,model.language_model.embedder.num_embeddings,x_out.size(),device=seq_mask_x.device)
+        mlm_masked_operations=torch.rand(x_out.size(),device=seq_mask_x.device)
+        mlm_masked_operation_mask= mlm_masked_operations <= 0.8
+        mlm_masked_operation_copy= (mlm_masked_operations > 0.8) * (mlm_masked_operations <= 0.9)
+        mlm_masked_operation_random= mlm_masked_operations > 0.9
+        mlm_in=x_out*inverse_mlm_mask_positions.long() + x_out*mlm_masked_operation_copy.long()*mlm_mask_positions.long() + random_vocab_x*mlm_masked_operation_random.long()*mlm_mask_positions.long()
+    else:
+        mlm_in=x_out*inverse_mlm_mask_positions.long()
+
     # Compute the translation and language model logits.
-    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, noisy_x_shuf_in, noisy_y_shuf_in, z,disable_x=x_to_y, disable_y=y_to_x,x_mlm_masked=x_out*inverse_mlm_mask_positions.long())
+    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, noisy_x_shuf_in, noisy_y_shuf_in, z,disable_x=x_to_y, disable_y=y_to_x,x_mlm_masked=mlm_in)
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
@@ -521,13 +534,25 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 else:
                     z = qz.sample()
 
+                mlm_in=None
                 if model.masked_lm is not None:
                     mlm_mask_positions=torch.rand(x_out.size(),device=seq_mask_x.device)
                     mlm_mask_positions= (mlm_mask_positions <= model.masked_lm_proportion ) * seq_mask_x #boolean: True: mask, False: left intact
                     inverse_mlm_mask_positions= ~ mlm_mask_positions # 1: left intact, 0: turn into mask
 
+                    if model.masked_lm_bert:
+                        #Now, mask as in the BERT paper
+                        random_vocab_x=torch.randint(4,model.language_model.embedder.num_embeddings,x_out.size(),device=seq_mask_x.device)
+                        mlm_masked_operations=torch.rand(x_out.size(),device=seq_mask_x.device)
+                        mlm_masked_operation_mask= mlm_masked_operations <= 0.8
+                        mlm_masked_operation_copy= (mlm_masked_operations > 0.8) * (mlm_masked_operations <= 0.9)
+                        mlm_masked_operation_random= mlm_masked_operations > 0.9
+                        mlm_in=x_out*inverse_mlm_mask_positions.long() + x_out*mlm_masked_operation_copy.long()*mlm_mask_positions.long() + random_vocab_x*mlm_masked_operation_random.long()*mlm_mask_positions.long()
+                    else:
+                        mlm_in=x_out*inverse_mlm_mask_positions.long()
+
                 # Compute the logits according to this sample of z.
-                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in,x_shuf_in,y_shuf_in, z,x_mlm_masked=x_out*inverse_mlm_mask_positions.long())
+                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in,x_shuf_in,y_shuf_in, z,x_mlm_masked=mlm_in)
 
                 # Compute log P(x|z_s)
                 log_lm_prob = F.log_softmax(lm_logits, dim=-1)

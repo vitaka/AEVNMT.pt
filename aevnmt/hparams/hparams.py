@@ -67,6 +67,7 @@ options = {
     "masked_lm_mask_prob": (float, 0.15, False, "Probability of masking a word in the masked LM", 1),
     "masked_lm_weight_prop_prob": (bool, False, False, "Set weight of masked LM to 1/masked_lm_mask_prob", 1),
     "masked_lm_mask_z_final": (bool, False, False, "In masked LM, feed z in the final FF instead of at the beginning", 1),
+    "masked_lm_bert": (bool, False, False, "Perform replacements as in BERT.", 1),
     "multi_task_stop_main": (bool, False, False, "When additing side losses, early stop based on the main LM", 1),
     "reverse_lm_shareemb":(bool, False, False, "The reverse or shuffled LM shares embeddings", 1),
     "disable_KL":(bool, False, False, "Disable KL divergence", 1),
