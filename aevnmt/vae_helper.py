@@ -132,7 +132,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    masked_lm_proportion=hparams.masked_lm_mask_prob,
                    masked_lm_bert=hparams.masked_lm_bert,
                    bow=hparams.bow_loss,
-                   disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli)
+                   disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli,transformer_inference_network=hparams.transformer_inference_network)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -152,7 +152,6 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     mlm_mask_positions= (mlm_mask_positions <= model.masked_lm_proportion ) * seq_mask_x #boolean: True: mask, False: left intact
     inverse_mlm_mask_positions= ~ mlm_mask_positions # 1: left intact, 0: turn into mask
 
-    #import pdb; pdb.set_trace()
     if model.masked_lm_bert:
         #Now, mask as in the BERT paper
         random_vocab_x=torch.randint(4,model.language_model.embedder.num_embeddings,x_out.size(),device=seq_mask_x.device)

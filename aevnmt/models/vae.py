@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from aevnmt.components import RNNEncoder, tile_rnn_hidden, tile_rnn_hidden_for_decoder
+from aevnmt.components import RNNEncoder, tile_rnn_hidden, tile_rnn_hidden_for_decoder,TransformerEncoder
 from aevnmt.dist import NormalLayer
 
 import sparsedists.bernoulli
@@ -11,7 +11,7 @@ from itertools import chain
 
 class InferenceNetwork(nn.Module):
 
-    def __init__(self, src_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type,max_pool,logvar):
+    def __init__(self, src_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type,max_pool,logvar, transformer_encoder=False,transformer_heads=8,transformer_hidden=2048):
         """
         :param src_embedder: uses this embedder, but detaches its output from the graph as to not compute
                              gradients for it.
@@ -20,24 +20,39 @@ class InferenceNetwork(nn.Module):
         self.max_pool=max_pool
 
         self.src_embedder = src_embedder
+        self.transformer_encoder=transformer_encoder
         emb_size = src_embedder.embedding_dim
-        self.encoder = RNNEncoder(emb_size=emb_size,
+        if transformer_encoder:
+            self.encoder= TransformerEncoder(input_size=emb_size,
+                                         num_heads=transformer_heads,
+                                         num_layers=num_enc_layers,
+                                         dim_ff=transformer_hidden,
+                                         dropout=0.)
+            encoding_size=emb_size
+        else:
+            self.encoder = RNNEncoder(emb_size=emb_size,
                                   hidden_size=hidden_size,
                                   bidirectional=bidirectional,
                                   dropout=0.,
                                   num_layers=num_enc_layers,
                                   cell_type=cell_type)
-        encoding_size = hidden_size if not bidirectional else hidden_size * 2
+            encoding_size = hidden_size if not bidirectional else hidden_size * 2
         self.normal_layer = NormalLayer(encoding_size, hidden_size, latent_size,logvar)
 
     def forward(self, x, seq_mask_x, seq_len_x,add_qz_scale=0.0):
-        x_embed = self.src_embedder(x).detach()
-        encoder_outputs, _ = self.encoder(x_embed, seq_len_x) #(B, T, hidden_size)
-
-        if self.max_pool:
-            avg_encoder_output = encoder_outputs.max(dim=1)[0]
+        if self.transformer_encoder:
+            #Add a special CLS token to the sentences? Problem: we do not know its embeddings
+            x_embed = self.src_embedder(x).detach()
+            encoder_outputs, _ = self.encoder(x_embed, seq_len_x) #(B, T, hidden_size)
+            avg_encoder_output=encoder_outputs[:,0,:]
         else:
-            avg_encoder_output = (encoder_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_outputs)).sum(dim=1)
+            x_embed = self.src_embedder(x).detach()
+            encoder_outputs, _ = self.encoder(x_embed, seq_len_x) #(B, T, hidden_size)
+
+            if self.max_pool:
+                avg_encoder_output = encoder_outputs.max(dim=1)[0]
+            else:
+                avg_encoder_output = (encoder_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_outputs)).sum(dim=1)
 
         return self.normal_layer(avg_encoder_output,add_qz_scale)
 
@@ -105,7 +120,7 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,language_model_shuf,language_model_shuf_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,masked_lm_bert=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,language_model_shuf,language_model_shuf_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,masked_lm_bert=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,transformer_inference_network=False):
         super().__init__()
 
         self.disable_KL=disable_KL
@@ -183,7 +198,7 @@ class VAE(nn.Module):
                                                 bidirectional=bidirectional,
                                                 num_enc_layers=num_layers,
                                                 cell_type=cell_type,
-                                                max_pool=max_pool,logvar=logvar)
+                                                max_pool=max_pool,logvar=logvar,transformer_encoder=transformer_inference_network)
         self.pred_network=self.inf_network
 
         self.bow_output_layer=None
