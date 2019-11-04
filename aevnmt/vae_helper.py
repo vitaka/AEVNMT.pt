@@ -521,13 +521,14 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 else:
                     z = qz.sample()
 
+                inverse_mlm_mask_positions=0.0
                 if model.masked_lm is not None:
                     mlm_mask_positions=torch.rand(x_out.size(),device=seq_mask_x.device)
                     mlm_mask_positions= (mlm_mask_positions <= model.masked_lm_proportion ) * seq_mask_x #boolean: True: mask, False: left intact
-                    inverse_mlm_mask_positions= ~ mlm_mask_positions # 1: left intact, 0: turn into mask
+                    inverse_mlm_mask_positions= (~ mlm_mask_positions).long() # 1: left intact, 0: turn into mask
 
                 # Compute the logits according to this sample of z.
-                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in,x_shuf_in,y_shuf_in, z,x_mlm_masked=x_out*inverse_mlm_mask_positions.long())
+                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in,x_shuf_in,y_shuf_in, z,x_mlm_masked=x_out*inverse_mlm_mask_positions)
 
                 # Compute log P(x|z_s)
                 log_lm_prob = F.log_softmax(lm_logits, dim=-1)
