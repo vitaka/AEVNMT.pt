@@ -133,7 +133,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    masked_lm_proportion=hparams.masked_lm_mask_prob,
                    masked_lm_bert=hparams.masked_lm_bert,
                    bow=hparams.bow_loss,
-                   disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli,bernoulli_bow_norm_uniform=hparams.bow_loss_product_bernoulli_norm_uniform,transformer_inference_network=hparams.transformer_inference_network)
+                   disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli,bernoulli_bow_norm_uniform=hparams.bow_loss_product_bernoulli_norm_uniform,bernoulli_weight=not hparams.disable_bow_loss_norm,transformer_inference_network=hparams.transformer_inference_network)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -169,7 +169,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
-        initial_KL=0
+        initial_KL=hparams.KL_annealing_start
         KL_weight = min(1.,   ((1.0 - initial_KL ) / hparams.KL_annealing_steps) * step + initial_KL )
     else:
         KL_weight = 1.
@@ -605,6 +605,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                         bow_weight= lm_logits.size(1)*1.0/bow_logits.size(-1)
                         if model.bernoulli_bow_norm_uniform:
                             bow_weight= bow_weight*math.log(1/bow_logits.size(-1))/math.log(0.5)
+                        if not model.bernoulli_weight :
+                            bow_weight=1.0
                         for i in range(bsz):
                             bow=bow_indexes[i]
                             bow_inv=bow_indexes_inv[i]
@@ -625,6 +627,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                         bow_weight= lm_logits_tl.size(1)*1.0/bow_logits_tl.size(-1)
                         if model.bernoulli_bow_norm_uniform:
                             bow_weight= bow_weight*math.log(1/bow_logits_tl.size(-1))/math.log(0.5)
+                        if not model.bernoulli_weight :
+                            bow_weight=1.0
                         for i in range(bsz):
                             bow=bow_indexes_tl[i]
                             bow_inv=bow_indexes_inv_tl[i]

@@ -63,6 +63,7 @@ options = {
     "bow_loss":(bool, False, False, "Add bag-of-words terms to the loss", 1),
     "bow_loss_product_bernoulli":(bool, False, False, "Bag-of-words loss is log of a product of independent Bernoulli probs. Otherwise, it is a softmax loss.", 1),
     "bow_loss_product_bernoulli_norm_uniform":(bool, False, False, "Normalize weight of Bernoulli BoW loss assuming uniform distribution", 1),
+    "disable_bow_loss_norm":(bool, False, False, "Do not normalize Bernoulli BoW loss", 1),
     "reverse_lm":(bool, False, False, "z is also used to produce sentences with a reverse LM", 1),
     "shuffle_lm":(bool, False, False, "z is also used to produce sentences with a shuffled LM instead of a reverse LM", 1),
     "masked_lm": (bool, False, False, "z is also used to produce sentences with a Transformer masked LM instead of a reverse LM", 1),
@@ -131,6 +132,7 @@ options = {
     "KL_free_nats": (float, 0., False, "KL = min(KL_free_nats, KL)", 3),
     "KL_free_nats_per_dimension": (bool, False, False, "Applies free nats independently for each dimension", 3),
     "KL_annealing_steps": (int, 0, False, "Amount of KL annealing steps (0...1)", 3),
+    "KL_annealing_start": (float, 0.0, False, "Starting value when doing KL annealing. Default=0.0", 3),
     "evaluate_every": (int, -1, False, "The number of batches after which to run"
                                        " evaluation. If <= 0, evaluation will happen"
                                        " after every epoch.", 3),

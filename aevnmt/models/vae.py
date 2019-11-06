@@ -121,13 +121,14 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,language_model_shuf,language_model_shuf_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,masked_lm_bert=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,bernoulli_bow_norm_uniform=False,transformer_inference_network=False):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,language_model_shuf,language_model_shuf_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,masked_lm_bert=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,bernoulli_bow_norm_uniform=False,bernoulli_weight=True,transformer_inference_network=False):
         super().__init__()
 
         self.disable_KL=disable_KL
         self.logvar=logvar
         self.bernoulli_bow=bernoulli_bow
         self.bernoulli_bow_norm_uniform=bernoulli_bow_norm_uniform
+        self.bernoulli_weight=bernoulli_weight
 
         self.feed_z=feed_z
         self.latent_size = latent_size
@@ -607,7 +608,7 @@ class VAE(nn.Module):
 
         #import pdb; pdb.set_trace()
         bow_weight=1
-        if bow_logits is not None and self.bernoulli_bow:
+        if bow_logits is not None and self.bernoulli_bow and self.bernoulli_weight:
             #Ratio between number of LM predictions and number of bow predictions
             bow_weight= lm_logits.size(1)*1.0/(num_bow_predictions*1.0/lm_logits.size(0))
             if self.bernoulli_bow_norm_uniform:
