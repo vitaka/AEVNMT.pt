@@ -133,7 +133,9 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    masked_lm_proportion=hparams.masked_lm_mask_prob,
                    masked_lm_bert=hparams.masked_lm_bert,
                    bow=hparams.bow_loss,
-                   disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli,bernoulli_bow_norm_uniform=hparams.bow_loss_product_bernoulli_norm_uniform,bernoulli_weight=not hparams.disable_bow_loss_norm,transformer_inference_network=hparams.transformer_inference_network)
+                   disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli,bernoulli_bow_norm_uniform=hparams.bow_loss_product_bernoulli_norm_uniform,bernoulli_weight=not hparams.disable_bow_loss_norm,
+                   MADE=hparams.MADE_loss,
+                   transformer_inference_network=hparams.transformer_inference_network)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -165,7 +167,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
         mlm_in=x_out*inverse_mlm_mask_positions.long()
 
     # Compute the translation and language model logits.
-    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, noisy_x_shuf_in, noisy_y_shuf_in, z,disable_x=x_to_y, disable_y=y_to_x,x_mlm_masked=mlm_in)
+    tm_logits, lm_logits, _, lm_logits_tl, bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits, MADE_logits,MADE_logits_tl = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, noisy_x_rev_in, noisy_y_rev_in, noisy_x_shuf_in, noisy_y_shuf_in, z,disable_x=x_to_y, disable_y=y_to_x,x_mlm_masked=mlm_in,x_unshifted=x_out, y_unshifted=y_out)
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
@@ -178,7 +180,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     loss = model.loss(tm_logits, lm_logits, y_out, x_out,y_rev_out,x_rev_out,y_shuf_out,x_shuf_out, qz,
                       free_nats=hparams.KL_free_nats,free_nats_per_dimension=hparams.KL_free_nats_per_dimension,
                       KL_weight=KL_weight,
-                      reduction="mean", qz_prediction=None,lm_logits_tl=lm_logits_tl,bow_logits=bow_logits, bow_logits_tl=bow_logits_tl,lm_rev_logits=lm_rev_logits,lm_rev_logits_tl=lm_rev_logits_tl,lm_shuf_logits=lm_shuf_logits,lm_shuf_logits_tl=lm_shuf_logits_tl,masked_lm_logits=masked_lm_logits,masked_lm_mask=mlm_mask_positions)
+                      reduction="mean", qz_prediction=None,lm_logits_tl=lm_logits_tl,bow_logits=bow_logits, bow_logits_tl=bow_logits_tl,lm_rev_logits=lm_rev_logits,lm_rev_logits_tl=lm_rev_logits_tl,lm_shuf_logits=lm_shuf_logits,lm_shuf_logits_tl=lm_shuf_logits_tl,masked_lm_logits=masked_lm_logits,masked_lm_mask=mlm_mask_positions,MADE_logits=MADE_logits,MADE_logits_tl=MADE_logits_tl)
     loss["z"]=z
     return loss
 
@@ -552,7 +554,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                         mlm_in=x_out*inverse_mlm_mask_positions.long()
 
                 # Compute the logits according to this sample of z.
-                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in,x_shuf_in,y_shuf_in, z,x_mlm_masked=mlm_in)
+                _, lm_logits, _ , lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl, masked_lm_logits,MADE_logits,MADE_logits_tl  = model(x_in, seq_mask_x, seq_len_x, y_in,x_rev_in,y_rev_in,x_shuf_in,y_shuf_in, z,x_mlm_masked=mlm_in,x_unshifted=x_out, y_unshifted=y_out)
 
                 # Compute log P(x|z_s)
                 log_lm_prob = F.log_softmax(lm_logits, dim=-1)
@@ -597,6 +599,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
 
                 log_bow_prob=torch.zeros_like(log_lm_prob)
                 log_bow_prob_tl=torch.zeros_like(log_lm_prob)
+                log_MADE_prob=torch.zeros_like(log_lm_prob)
+                log_MADE_prob_tl=torch.zeros_like(log_lm_prob)
 
                 if bow_logits is not None:
                     if model.bernoulli_bow:
@@ -641,6 +645,24 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                             bow=bow_indexes_tl[i]
                             #bow_inv=bow_indexes_inv_tl[i]
                             log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) #+ torch.sum( bow_logprobs_inv_tl[i][bow_inv] )
+                
+                if MADE_logits is not None:
+                    bsz=x_out.size(0)
+                    made_ref=torch.zeros((bsz,model.MADE.event_size),device=x_out.device)
+                    for i in range(bsz):
+                        bow=torch.unique(x_out[i] )
+                        made_ref[i][bow]=1.0
+                    log_MADE_prob=MADE_logits.log_prob(made_ref).sum(-1)
+
+                if MADE_logits_tl is not None:
+                    bsz=y_out.size(0)
+                    made_ref=torch.zeros((bsz,model.MADE_tl.event_size),device=y_out.device)
+                    for i in range(bsz):
+                        bow=torch.unique(y_out[i] )
+                        made_ref[i][bow]=1.0
+                    log_MADE_prob_tl=MADE_logits_tl.log_prob(made_ref).sum(-1)
+
+
 
                 #Importance sampling: as if we were integratting over prior probabilities
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
@@ -648,7 +670,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 log_qz = qz.log_prob(z).sum(dim=1) if not model.disable_KL else 0.0
 
                 # Estimate the importance weighted estimate of (the log of) P(x, y)
-                batch_log_marginals[s] = log_lm_prob + log_lm_prob_tl + log_bow_prob + log_bow_prob_tl + log_lm_prob_rev + log_lm_prob_rev_tl + log_lm_prob_shuf + log_lm_prob_shuf_tl + log_masked_lm_prob*model.masked_lm_weight + log_pz - log_qz
+                batch_log_marginals[s] = log_lm_prob + log_lm_prob_tl + log_bow_prob + log_bow_prob_tl + log_lm_prob_rev + log_lm_prob_rev_tl + log_lm_prob_shuf + log_lm_prob_shuf_tl + log_masked_lm_prob*model.masked_lm_weight + log_MADE_prob + log_MADE_prob_tl + log_pz - log_qz
                 batch_log_marginals_lm[s] = log_lm_prob + log_pz - log_qz
                 batch_log_marginals_lm_rev[s] = log_lm_prob_rev + log_pz - log_qz
                 batch_log_marginals_lm_shuf[s] = log_lm_prob_shuf + log_pz - log_qz

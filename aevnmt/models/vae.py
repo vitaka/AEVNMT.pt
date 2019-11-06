@@ -8,6 +8,12 @@ from aevnmt.dist import NormalLayer
 
 import sparsedists.bernoulli
 
+import dgm
+from dgm.conditional import MADEConditioner
+from dgm.likelihood import AutoregressiveLikelihood
+
+from torch.distributions import Bernoulli
+
 from itertools import chain
 
 class InferenceNetwork(nn.Module):
@@ -121,7 +127,7 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,language_model_shuf,language_model_shuf_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,masked_lm_bert=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,bernoulli_bow_norm_uniform=False,bernoulli_weight=True,transformer_inference_network=False):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,language_model_shuf,language_model_shuf_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,masked_lm_bert=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,bernoulli_bow_norm_uniform=False,bernoulli_weight=True,MADE=False,transformer_inference_network=False):
         super().__init__()
 
         self.disable_KL=disable_KL
@@ -214,6 +220,35 @@ class VAE(nn.Module):
                 self.bow_output_layer_tl = nn.Linear(latent_size,
                                                   self.language_model_tl.embedder.num_embeddings, bias=True)
 
+        self.MADE=None
+        self.MADE_tl=None
+        if MADE:
+            made = MADEConditioner(
+                input_size= self.language_model.embedder.num_embeddings + self.latent_size,  # our only input to the MADE layer is the observation
+                output_size= self.language_model.embedder.num_embeddings,  # number of parameters to predict
+                context_size=self.latent_size,
+                hidden_sizes=[8000, 8000], # TODO: is this OK?
+                num_masks=2 #TODO: is that OK?
+            )
+            self.MADE = AutoregressiveLikelihood(
+                event_size=self.language_model.embedder.num_embeddings,  # size of observation
+                dist_type=Bernoulli,
+                conditioner=made
+                )
+            if self.language_model_tl is not None:
+                made_tl =MADEConditioner(
+                    input_size= self.language_model_tl.embedder.num_embeddings  + self.latent_size,  # our only input to the MADE layer is the observation
+                    output_size= self.language_model_tl.embedder.num_embeddings,  # number of parameters to predict
+                    context_size=self.latent_size,
+                    hidden_sizes=[8000, 8000], # TODO: is this OK?
+                    num_masks=2 #TODO: is this OK?
+                )
+                self.MADE_tl= AutoregressiveLikelihood(
+                    event_size=self.language_model_tl.embedder.num_embeddings,  # size of observation
+                    dist_type=Bernoulli,
+                    conditioner=made_tl
+                    )
+
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
         # they will be moved to the appropriate device on which the model is run.
@@ -240,6 +275,8 @@ class VAE(nn.Module):
         lm_shuf_init_layer_parameters=iter(())
         lm_shuf_tl_parameters=iter(())
         lm_shuf_tl_init_layer_parameters=iter(())
+        made_parameters=iter(())
+        made_tl_parameters=iter(())
 
         masked_lm_parameters=iter(())
         if self.language_model_tl is not None:
@@ -262,7 +299,13 @@ class VAE(nn.Module):
         if self.masked_lm is not None:
             masked_lm_parameters=chain(self.masked_lm.parameters(),self.masked_lm_linear_prediction.parameters())
 
-        return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters , lm_rev_parameters, lm_rev_init_layer_parameters, lm_rev_tl_parameters, lm_rev_tl_init_layer_parameters,               lm_shuf_parameters, lm_shuf_init_layer_parameters, lm_shuf_tl_parameters, lm_shuf_tl_init_layer_parameters  , masked_lm_parameters  )
+        if self.MADE is not None:
+            made_parameters=self.MADE.parameters()
+
+        if self.MADE_tl is not None:
+            made_tl_parameters=self.MADE_tl.parameters()
+
+        return chain(self.language_model.parameters(), self.lm_init_layer.parameters(),lm_tl_parameters  ,lm_tl_init_layer_parameters , lm_rev_parameters, lm_rev_init_layer_parameters, lm_rev_tl_parameters, lm_rev_tl_init_layer_parameters,               lm_shuf_parameters, lm_shuf_init_layer_parameters, lm_shuf_tl_parameters, lm_shuf_tl_init_layer_parameters  , masked_lm_parameters , made_parameters, made_tl_parameters )
 
     def bow_parameters(self):
         return chain( iter(()) if self.bow_output_layer is None else self.bow_output_layer.parameters()   , iter(()) if self.bow_output_layer_tl is None else self.bow_output_layer_tl.parameters()  )
@@ -360,7 +403,7 @@ class VAE(nn.Module):
         return lm(x, hidden=hidden, z=z if self.feed_z else None)
 
 
-    def forward(self, x, seq_mask_x, seq_len_x, y,x_rev,y_rev,x_shuf,y_shuf, z,disable_x=False, disable_y=False, x_mlm_masked=None):
+    def forward(self, x, seq_mask_x, seq_len_x, y,x_rev,y_rev,x_shuf,y_shuf, z,disable_x=False, disable_y=False, x_mlm_masked=None, x_unshifted=None, y_unshifted=None):
 
         # Estimate the Categorical parameters for E[P(x|z)] using the given sample of the latent
         # variable.
@@ -400,6 +443,26 @@ class VAE(nn.Module):
         else:
             bow_logits_tl=None
 
+        MADE_logits=None
+        if self.MADE is not None:
+            #Create binary inputs
+            bsz=x.size(0)
+            made_input=torch.zeros((bsz,self.MADE.event_size),device=x.device)
+            for i in range(bsz):
+                bow=torch.unique(x_unshifted[i] * seq_mask_x[i].type_as(x_unshifted[i]))
+                made_input[i][bow]=1.0
+            MADE_logits=self.MADE(z,made_input)
+
+        MADE_logits_tl=None
+        if self.MADE_tl is not None:
+            #Create binary inputs
+            bsz=x.size(0)
+            made_input=torch.zeros((bsz,self.MADE_tl.event_size),device=x.device)
+            for i in range(bsz):
+                bow=torch.unique(y_unshifted[i] * seq_mask_y[i].type_as(y_unshifted[i]))
+                made_input[i][bow]=1.0
+            MADE_logits_tl=self.MADE_tl(z,made_input)
+
         masked_lm_logits=None
         if self.masked_lm is not None and x_mlm_masked is not None:
             masked_lm_result=self.masked_lm( self.language_model.embedder(x_mlm_masked), seq_len_x, z if not self.masked_lm_mask_z_final else None)[0]
@@ -410,7 +473,7 @@ class VAE(nn.Module):
                 linear_input= torch.cat([linear_input, z.unsqueeze(1).repeat( 1 ,linear_input.size(1)  ,1) ], dim=-1)
             masked_lm_logits= self.masked_lm_linear_prediction ( linear_input )
 
-        return None, lm_logits, None,lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl,masked_lm_logits
+        return None, lm_logits, None,lm_logits_tl,bow_logits, bow_logits_tl,lm_rev_logits,lm_rev_logits_tl,lm_shuf_logits,lm_shuf_logits_tl,masked_lm_logits, MADE_logits, MADE_logits_tl
 
     def compute_conditionals(self, x_in, seq_mask_x, seq_len_x, x_out, y_in, y_out, z):
         """
@@ -471,7 +534,7 @@ class VAE(nn.Module):
 
     #TODO: remove tm_logits? target_y?
     def loss(self, tm_logits, lm_logits, targets_y, targets_x, targets_y_rev,targets_x_rev,targets_y_shuf,targets_x_shuf, qz, free_nats=0.,free_nats_per_dimension=False,
-             KL_weight=1., reduction="mean", qz_prediction=None, lm_logits_tl=None, bow_logits=None, bow_logits_tl=None,lm_rev_logits=None,lm_rev_logits_tl=None,lm_shuf_logits=None,lm_shuf_logits_tl=None, masked_lm_logits=None, masked_lm_mask=None):
+             KL_weight=1., reduction="mean", qz_prediction=None, lm_logits_tl=None, bow_logits=None, bow_logits_tl=None,lm_rev_logits=None,lm_rev_logits_tl=None,lm_shuf_logits=None,lm_shuf_logits_tl=None, masked_lm_logits=None, masked_lm_mask=None,MADE_logits=None,MADE_logits_tl=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -492,16 +555,20 @@ class VAE(nn.Module):
         # Compute the language model categorical loss.
         lm_loss =0.0
         bow_loss=0.0
+        MADE_loss=0.0
         if lm_logits is not None:
             lm_loss  = self.language_model.loss(lm_logits, targets_x, reduction="none")
             bow_loss=torch.zeros_like(lm_loss)
+            MADE_loss=torch.zeros_like(lm_loss)
 
         if lm_logits_tl is not None:
             lm_loss_tl=self.language_model_tl.loss(lm_logits_tl,targets_y,reduction="none")
             bow_loss_tl=torch.zeros_like(lm_loss_tl)
+            MADE_loss_tl=torch.zeros_like(lm_loss_tl)
         else:
             lm_loss_tl=0.0
             bow_loss_tl=0.0
+            MADE_loss_tl=0.0
 
         lm_rev_loss=0.0
         lm_rev_loss_tl=0.0
@@ -585,6 +652,7 @@ class VAE(nn.Module):
                     inv_bow=vocab_mask.nonzero().squeeze()
 
                     bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) + torch.sum( bow_inverse_logprobs_tl[i][inv_bow] )
+                    num_bow_predictions+=(len(bow) + len(inv_bow))
             else:
                 bow_logprobs_tl=-F.log_softmax(bow_logits_tl,dim=-1)
                 #bow_inverse_logprobs_tl=-torch.log((1-torch.sigmoid(bow_logits_tl)))
@@ -600,6 +668,27 @@ class VAE(nn.Module):
                     #inv_bow=vocab_mask.nonzero().squeeze()
 
                     bow_loss_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )# + torch.sum( bow_inverse_logprobs_tl[i][inv_bow] )
+                    num_bow_predictions+=len(bow)
+
+        if MADE_logits is not None:
+            bsz=targets_x.size(0)
+            made_ref=torch.zeros((bsz,self.MADE.event_size),device=targets_x.device)
+            for i in range(bsz):
+                bow=torch.unique(targets_x[i] )
+                made_ref[i][bow]=1.0
+            MADE_loss=-MADE_logits.log_prob(made_ref).sum(-1)
+            if bow_logits is None:
+                num_bow_predictions+=self.MADE.event_size
+
+        if MADE_logits_tl is not None:
+            bsz=targets_y.size(0)
+            made_ref=torch.zeros((bsz,self.MADE_tl.event_size),device=targets_y.device)
+            for i in range(bsz):
+                bow=torch.unique(targets_y[i] )
+                made_ref[i][bow]=1.0
+            MADE_loss_tl= -MADE_logits_tl.log_prob(made_ref).sum(-1)
+            if bow_logits is None:
+                num_bow_predictions+=self.MADE_tl.event_size
 
 
         # Compute the KL divergence between the distribution used to sample z, and the prior
@@ -608,7 +697,7 @@ class VAE(nn.Module):
 
         #import pdb; pdb.set_trace()
         bow_weight=1
-        if bow_logits is not None and self.bernoulli_bow and self.bernoulli_weight:
+        if ((bow_logits is not None and self.bernoulli_bow) or  MADE_logits is not None ) and self.bernoulli_weight:
             #Ratio between number of LM predictions and number of bow predictions
             bow_weight= lm_logits.size(1)*1.0/(num_bow_predictions*1.0/lm_logits.size(0))
             if self.bernoulli_bow_norm_uniform:
@@ -616,7 +705,7 @@ class VAE(nn.Module):
 
         # The loss is the negative ELBO.
         lm_log_likelihood = -lm_loss - lm_loss_tl - lm_rev_loss - lm_rev_loss_tl - lm_shuf_loss - lm_shuf_loss_tl - masked_lm_loss*self.masked_lm_weight
-        bow_log_likelihood = (- bow_loss - bow_loss_tl)*bow_weight
+        bow_log_likelihood = (- bow_loss - bow_loss_tl - MADE_loss -MADE_loss_tl )*bow_weight
 
         KL=0.0
         raw_KL=0.0
