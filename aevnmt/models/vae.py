@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import math
 from aevnmt.components import RNNEncoder, tile_rnn_hidden, tile_rnn_hidden_for_decoder,TransformerEncoder
 from aevnmt.dist import NormalLayer
 
@@ -120,12 +121,13 @@ class BilingualInferenceNetwork(nn.Module):
 
 class VAE(nn.Module):
 
-    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,language_model_shuf,language_model_shuf_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,masked_lm_bert=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,transformer_inference_network=False):
+    def __init__(self, emb_size, latent_size, hidden_size, bidirectional,num_layers,cell_type, language_model, max_pool,feed_z,pad_idx, dropout,language_model_tl,language_model_rev,language_model_rev_tl,language_model_shuf,language_model_shuf_tl,masked_lm=None,masked_lm_mask_z_final=False,masked_lm_weight=1.0,masked_lm_proportion=0.15,masked_lm_bert=False,bow=False, disable_KL=False,logvar=False,bernoulli_bow=False,bernoulli_bow_norm_uniform=False,transformer_inference_network=False):
         super().__init__()
 
         self.disable_KL=disable_KL
         self.logvar=logvar
         self.bernoulli_bow=bernoulli_bow
+        self.bernoulli_bow_norm_uniform=bernoulli_bow_norm_uniform
 
         self.feed_z=feed_z
         self.latent_size = latent_size
@@ -608,6 +610,8 @@ class VAE(nn.Module):
         if bow_logits is not None and self.bernoulli_bow:
             #Ratio between number of LM predictions and number of bow predictions
             bow_weight= lm_logits.size(1)*1.0/(num_bow_predictions*1.0/lm_logits.size(0))
+            if self.bernoulli_bow_norm_uniform:
+                bow_weight= bow_weight*math.log(1/(num_bow_predictions*1.0/lm_logits.size(0)))/math.log(0.5)
 
         # The loss is the negative ELBO.
         lm_log_likelihood = -lm_loss - lm_loss_tl - lm_rev_loss - lm_rev_loss_tl - lm_shuf_loss - lm_shuf_loss_tl - masked_lm_loss*self.masked_lm_weight

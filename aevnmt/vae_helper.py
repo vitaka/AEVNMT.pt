@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 from torch.distributions.normal import Normal
 
+import math
 import sparsedists.bernoulli
 
 from aevnmt.data import BucketingParallelDataLoader, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
@@ -132,7 +133,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    masked_lm_proportion=hparams.masked_lm_mask_prob,
                    masked_lm_bert=hparams.masked_lm_bert,
                    bow=hparams.bow_loss,
-                   disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli,transformer_inference_network=hparams.transformer_inference_network)
+                   disable_KL=hparams.disable_KL, logvar=hparams.logvar, bernoulli_bow=hparams.bow_loss_product_bernoulli,bernoulli_bow_norm_uniform=hparams.bow_loss_product_bernoulli_norm_uniform,transformer_inference_network=hparams.transformer_inference_network)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -601,10 +602,13 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                     if model.bernoulli_bow:
                         bow_logprobs,bow_logprobs_inv =sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits)
                         bsz=bow_logits.size(0)
+                        bow_weight= lm_logits.size(1)*1.0/bow_logits.size(-1)
+                        if model.bernoulli_bow_norm_uniform:
+                            bow_weight= bow_weight*math.log(1/bow_logits.size(-1))/math.log(0.5)
                         for i in range(bsz):
                             bow=bow_indexes[i]
                             bow_inv=bow_indexes_inv[i]
-                            log_bow_prob[i]=torch.sum( bow_logprobs[i][bow] ) + torch.sum(bow_logprobs_inv[i][bow_inv])
+                            log_bow_prob[i]= (torch.sum( bow_logprobs[i][bow] ) + torch.sum(bow_logprobs_inv[i][bow_inv]))*bow_weight
                     else:
                         bow_logprobs=F.log_softmax(bow_logits,dim=-1)
                         #bow_logprobs_inv=torch.log(1-torch.sigmoid(bow_logits))
@@ -618,10 +622,13 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                     if model.bernoulli_bow:
                         bow_logprobs_tl,bow_logprobs_inv_tl =sparsedists.bernoulli.bernoulli_log_probs_from_logit(bow_logits)
                         bsz=bow_logits_tl.size(0)
+                        bow_weight= lm_logits_tl.size(1)*1.0/bow_logits_tl.size(-1)
+                        if model.bernoulli_bow_norm_uniform:
+                            bow_weight= bow_weight*math.log(1/bow_logits_tl.size(-1))/math.log(0.5)
                         for i in range(bsz):
                             bow=bow_indexes_tl[i]
                             bow_inv=bow_indexes_inv_tl[i]
-                            log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) + torch.sum( bow_logprobs_inv_tl[i][bow_inv] )
+                            log_bow_prob_tl[i]=(torch.sum( bow_logprobs_tl[i][bow] ) + torch.sum( bow_logprobs_inv_tl[i][bow_inv] ) )*bow_weight
                     else:
                         bow_logprobs_tl=F.log_softmax(bow_logits_tl,dim=-1)
                         #bow_logprobs_inv_tl=torch.log(1-torch.sigmoid(bow_logits_tl))
