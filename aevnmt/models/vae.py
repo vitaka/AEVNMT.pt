@@ -227,8 +227,8 @@ class VAE(nn.Module):
                 input_size= self.language_model.embedder.num_embeddings + self.latent_size,  # our only input to the MADE layer is the observation
                 output_size= self.language_model.embedder.num_embeddings,  # number of parameters to predict
                 context_size=self.latent_size,
-                hidden_sizes=[8000, 8000], # TODO: is this OK?
-                num_masks=2 #TODO: is that OK?
+                hidden_sizes=[hidden_size, hidden_size], # TODO: is this OK?
+                num_masks=10 #TODO: is that OK?
             )
             self.MADE = AutoregressiveLikelihood(
                 event_size=self.language_model.embedder.num_embeddings,  # size of observation
@@ -240,8 +240,8 @@ class VAE(nn.Module):
                     input_size= self.language_model_tl.embedder.num_embeddings  + self.latent_size,  # our only input to the MADE layer is the observation
                     output_size= self.language_model_tl.embedder.num_embeddings,  # number of parameters to predict
                     context_size=self.latent_size,
-                    hidden_sizes=[8000, 8000], # TODO: is this OK?
-                    num_masks=2 #TODO: is this OK?
+                    hidden_sizes=[hidden_size, hidden_size], # TODO: is this OK?
+                    num_masks=10 #TODO: is this OK?
                 )
                 self.MADE_tl= AutoregressiveLikelihood(
                     event_size=self.language_model_tl.embedder.num_embeddings,  # size of observation
