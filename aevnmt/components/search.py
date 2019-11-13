@@ -39,10 +39,8 @@ def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_output
         logits = generator_fn(pre_output)
         py_x = Categorical(logits=logits)
 
-
-        #TODO: check here whether sizes are OK
         if force_first_token is not None and t ==0:
-            prediction=torch.tensor(force_first_token,device=prev_y.device).repeat(batch_size)
+            prediction=torch.tensor(force_first_token,device=prev_y.device).repeat(batch_size,1)
         else:
             if greedy:
                 prediction = torch.argmax(logits, dim=-1)
