@@ -66,6 +66,9 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
         if not lm_decoding:
             encoder_outputs = tile(encoder_outputs.contiguous(), beam_width,
                                dim=0)               # [B*beam_width, T_x, H_enc]
+        if z is not None:
+            z=tile(z.contiguous(), beam_width,
+                               dim=0)
         seq_mask_x = tile(seq_mask_x, beam_width, dim=0)    # [B*beam_width, 1, T_x]
 
         batch_offset = torch.arange(
@@ -104,7 +107,7 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
             if lm_decoding:
                 hidden,pre_output = decoder.step(prev_y, hidden,z)
             else:
-                pre_output, hidden, _ = decoder.step(prev_y, hidden, seq_mask_x, encoder_outputs)
+                pre_output, hidden, _ = decoder.step(prev_y, hidden, seq_mask_x, encoder_outputs,z)
             logits = generator_fn(pre_output)
             if luong_decoding: hidden, prev_pre_output = hidden
             log_probs = F.log_softmax(logits, dim=-1).squeeze(1)  # [B*beam_width, |V_y|]
@@ -190,8 +193,11 @@ def beam_search(decoder, tgt_embed_fn, generator_fn, tgt_vocab_size, hidden, enc
             select_indices = batch_index.view(-1)
             if not lm_decoding:
                 encoder_outputs = encoder_outputs.index_select(0, select_indices)
+            if z is not None:
+                z=z.index_select(0,select_indices)
             seq_mask_x = seq_mask_x.index_select(0, select_indices)
-            z=z.index_select(0,select_indices)
+            if z is not None:
+                z=z.index_select(0,select_indices)
             if not lm_decoding:
                 decoder.attention.proj_keys = decoder.attention.proj_keys. \
                     index_select(0, select_indices)

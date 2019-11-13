@@ -258,9 +258,11 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl, 'main_likelihood': -val_NLL_lm}
 
 
-def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None, use_tl_lm=False, use_reverse_lm=False):
+def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None, use_tl_lm=False, use_reverse_lm=False, force_first_token=None):
     model.eval()
     with torch.no_grad():
+        if force_first_token is not None:
+            force_first_token=vocab_src[force_first_token]
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
         if input_sentences_y is not None:
             y_in, _, seq_mask_y, seq_len_y = create_batch(input_sentences_y, vocab_tgt, device)
@@ -307,13 +309,13 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                                                    model.lm_generate, hidden,
                                                    None, None,
                                                    seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
-                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, my_z if hparams.feed_z else None)
+                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, my_z if hparams.feed_z else None, force_first_token=force_first_token)
                 elif hparams.beam_width <= 1:
                     raw_hypothesis_step = greedy_decode(language_model, embed,
                                                    model.lm_generate, hidden,
                                                    None, None,
                                                    seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
-                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,my_z if hparams.feed_z else None)
+                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,my_z if hparams.feed_z else None, force_first_token=force_first_token)
                 else:
                     raw_hypothesis_step = beam_search(language_model, embed, model.lm_generate,
                                                  vocab.size(), hidden, None,
@@ -321,7 +323,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                                                  vocab[SOS_TOKEN], vocab[EOS_TOKEN],
                                                  vocab[PAD_TOKEN], hparams.beam_width,
                                                  hparams.length_penalty_factor,
-                                                 hparams.max_decoding_length,hparams.n_best,my_z if hparams.feed_z else None)
+                                                 hparams.max_decoding_length,hparams.n_best,my_z if hparams.feed_z else None, force_first_token=force_first_token)
                 raw_hypothesis_l.append(raw_hypothesis_step)
 
             raw_hypothesis=torch.cat(raw_hypothesis_l,dim=1)
@@ -339,13 +341,13 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                                                model.lm_generate, hidden,
                                                None, None,
                                                seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
-                                               vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None)
+                                               vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None, force_first_token=force_first_token)
             elif hparams.beam_width <= 1:
                 raw_hypothesis = greedy_decode(language_model, embed,
                                                model.lm_generate, hidden,
                                                None, None,
                                                seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
-                                               vocab[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None)
+                                               vocab[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None, force_first_token=force_first_token)
             else:
                 raw_hypothesis = beam_search(language_model, embed, model.lm_generate,
                                              vocab.size(), hidden, None,
@@ -353,7 +355,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                                              vocab[SOS_TOKEN], vocab[EOS_TOKEN],
                                              vocab[PAD_TOKEN], hparams.beam_width,
                                              hparams.length_penalty_factor,
-                                             hparams.max_decoding_length,hparams.n_best,z if hparams.feed_z else None)
+                                             hparams.max_decoding_length,hparams.n_best,z if hparams.feed_z else None, force_first_token=force_first_token)
 
     #hypothesis_l: size= nbest
     hypothesis_l=[]
@@ -645,7 +647,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                             bow=bow_indexes_tl[i]
                             #bow_inv=bow_indexes_inv_tl[i]
                             log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] ) #+ torch.sum( bow_logprobs_inv_tl[i][bow_inv] )
-                
+
                 if MADE_logits is not None:
                     bsz=x_out.size(0)
                     made_ref=torch.zeros((bsz,model.MADE.event_size),device=x_out.device)

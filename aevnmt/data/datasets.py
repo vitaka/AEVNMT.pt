@@ -10,9 +10,12 @@ from aevnmt.data.textprocessing import TextProcess
 
 class ParallelDataset(Dataset):
 
-    def __init__(self, src_file, tgt_file, max_length=-1,add_reverse=False, add_shuffled=False):
+    def __init__(self, src_file, tgt_file, max_length=-1,add_reverse=False, add_shuffled=False,additional_tags_file=None):
 
         self.data = []
+        tags_f=None
+        if additional_tags_file is not None:
+            tags_f=open(additional_tags_file)
         with open(src_file) as sf, open(tgt_file) as tf:
             for src, tgt in zip(sf, tf):
                 src = src_rev = src_shuf = src.strip()
@@ -25,11 +28,22 @@ class ParallelDataset(Dataset):
                 if add_shuffled:
                     src_shuf=" ".join(np.random.permutation(src.split(" ")))
                     tgt_shuf=" ".join(np.random.permutation(tgt.split(" ")))
+
+                tags=None
+                if tags_f is not None:
+                    tags=tags_f.readline().strip("\n")
+
                 if max_length < 0 or (src_length <= max_length and tgt_length <= max_length):
                     if add_reverse or add_shuffled:
-                        self.data.append((src, tgt,src_rev,tgt_rev,src_shuf,tgt_shuf))
+                        if tags is not None:
+                            self.data.append((src, tgt,src_rev,tgt_rev,src_shuf,tgt_shuf,tags))
+                        else:
+                            self.data.append((src, tgt,src_rev,tgt_rev,src_shuf,tgt_shuf))
                     else:
-                        self.data.append((src, tgt))
+                        if tags is not None:
+                            self.data.append((src, tgt,tags))
+                        else:
+                            self.data.append((src, tgt))
 
     def __len__(self):
         return len(self.data)

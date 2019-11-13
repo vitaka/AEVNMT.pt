@@ -9,12 +9,13 @@ from itertools import chain
 
 class InferenceNetwork(nn.Module):
 
-    def __init__(self, src_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type):
+    def __init__(self, src_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type, max_pool=False):
         """
         :param src_embedder: uses this embedder, but detaches its output from the graph as to not compute
                              gradients for it.
         """
         super().__init__()
+        self.max_pool=max_pool
         self.src_embedder = src_embedder
         emb_size = src_embedder.embedding_dim
         self.encoder = RNNEncoder(emb_size=emb_size,
@@ -29,7 +30,10 @@ class InferenceNetwork(nn.Module):
     def forward(self, x, seq_mask_x, seq_len_x):
         x_embed = self.src_embedder(x).detach()
         encoder_outputs, _ = self.encoder(x_embed, seq_len_x)
-        avg_encoder_output = (encoder_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_outputs)).sum(dim=1)
+        if self.max_pool:
+            avg_encoder_output = encoder_outputs.max(dim=1)[0]
+        else:
+            avg_encoder_output = (encoder_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_outputs)).sum(dim=1)
         return self.normal_layer(avg_encoder_output)
 
     def parameters(self, recurse=True):
@@ -40,7 +44,7 @@ class InferenceNetwork(nn.Module):
 
 class BilingualInferenceNetwork(nn.Module):
 
-    def __init__(self, src_embedder, tgt_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type):
+    def __init__(self, src_embedder, tgt_embedder, hidden_size, latent_size, bidirectional, num_enc_layers, cell_type, max_pool=False):
         """
         :param src_embedder: uses this embedder, but detaches its output from the graph as to not compute
                              gradients for it.
@@ -48,6 +52,7 @@ class BilingualInferenceNetwork(nn.Module):
                              gradients for it.
         """
         super().__init__()
+        self.max_pool=max_pool
         self.src_embedder = src_embedder
         self.tgt_embedder = tgt_embedder
         emb_size = src_embedder.embedding_dim
@@ -72,8 +77,12 @@ class BilingualInferenceNetwork(nn.Module):
         y_embed = self.tgt_embedder(y).detach()
         encoder_src_outputs, _ = self.src_encoder(x_embed, seq_len_x)
         encoder_tgt_outputs, _ = self.tgt_encoder(y_embed, seq_len_y)
-        avg_encoder_src_output = (encoder_src_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_src_outputs)).sum(dim=1)
-        avg_encoder_tgt_output = (encoder_tgt_outputs * seq_mask_y.unsqueeze(-1).type_as(encoder_tgt_outputs)).sum(dim=1)
+        if self.max_pool:
+            avg_encoder_src_output = encoder_src_outputs.max(dim=1)[0]
+            avg_encoder_tgt_output = encoder_tgt_outputs.max(dim=1)[0]
+        else:
+            avg_encoder_src_output = (encoder_src_outputs * seq_mask_x.unsqueeze(-1).type_as(encoder_src_outputs)).sum(dim=1)
+            avg_encoder_tgt_output = (encoder_tgt_outputs * seq_mask_y.unsqueeze(-1).type_as(encoder_tgt_outputs)).sum(dim=1)
         return self.normal_layer(torch.cat((avg_encoder_src_output,avg_encoder_tgt_output), dim=-1))
 
     def parameters(self, recurse=True):
@@ -86,13 +95,17 @@ class BilingualInferenceNetwork(nn.Module):
 class AEVNMT(nn.Module):
 
     def __init__(self, tgt_vocab_size, emb_size, latent_size, encoder, decoder, language_model,
-                 pad_idx, dropout, tied_embeddings,separate_prediction_network, disable_prediction_network):
+                 max_pool,feed_z,language_model_rev,language_model_shuf,
+                 pad_idx, dropout, tied_embeddings,separate_prediction_network, disable_prediction_network,bow=False,MADE=False):
         super().__init__()
+        self.feed_z=feed_z
         self.latent_size = latent_size
         self.pad_idx = pad_idx
         self.encoder = encoder
         self.decoder = decoder
         self.language_model = language_model
+        self.language_model_rev=language_model_rev
+        self.language_model_shuf=language_model_shuf
         self.tgt_embedder = nn.Embedding(tgt_vocab_size, emb_size, padding_idx=pad_idx)
         self.tied_embeddings = tied_embeddings
         if not tied_embeddings:
@@ -102,8 +115,36 @@ class AEVNMT(nn.Module):
                                                 nn.Tanh())
         self.decoder_init_layer = nn.Sequential(nn.Linear(latent_size, decoder.hidden_size),
                                                 nn.Tanh())
+
         self.lm_init_layer = nn.Sequential(nn.Linear(latent_size, language_model.hidden_size),
                                            nn.Tanh())
+        if self.language_model_rev is not None:
+            self.lm_init_layer_rev = nn.Sequential(nn.Linear(latent_size, language_model_rev.hidden_size),
+                                           nn.Tanh())
+        else:
+            self.lm_init_layer_rev =None
+
+        if self.language_model_shuf is not None:
+            self.lm_init_layer_shuf = nn.Sequential(nn.Linear(latent_size, language_model_shuf.hidden_size),
+                                           nn.Tanh())
+        else:
+            self.lm_init_layer_shuf =None
+
+        self.bow_output_layer=None
+        if bow:
+            self.bow_output_layer = nn.Linear(latent_size,
+                                                      self.language_model.embedder.num_embeddings, bias=True)
+
+
+        self.MADE=None
+        if MADE:
+            made = MADEConditioner(
+                input_size= self.language_model.embedder.num_embeddings + self.latent_size,  # our only input to the MADE layer is the observation
+                output_size= self.language_model.embedder.num_embeddings,  # number of parameters to predict
+                context_size=self.latent_size,
+                hidden_sizes=[hidden_size, hidden_size], # TODO: is this OK?
+                num_masks=10 #TODO: is that OK?
+            )
 
         if separate_prediction_network:
             self.inf_network = BilingualInferenceNetwork(src_embedder=self.language_model.embedder,tgt_embedder=self.tgt_embedder,
@@ -111,14 +152,14 @@ class AEVNMT(nn.Module):
                                                 latent_size=latent_size,
                                                 bidirectional=encoder.bidirectional,
                                                 num_enc_layers=encoder.num_layers,
-                                                cell_type=encoder.cell_type)
+                                                cell_type=encoder.cell_type, max_pool=max_pool)
             if not disable_prediction_network:
                 self.pred_network = InferenceNetwork(src_embedder=self.language_model.embedder,
                                                 hidden_size=encoder.hidden_size,
                                                 latent_size=latent_size,
                                                 bidirectional=encoder.bidirectional,
                                                 num_enc_layers=encoder.num_layers,
-                                                cell_type=encoder.cell_type)
+                                                cell_type=encoder.cell_type, max_pool=max_pool)
             else:
                 self.pred_network = self.inf_network
         else:
@@ -127,7 +168,7 @@ class AEVNMT(nn.Module):
                                                 latent_size=latent_size,
                                                 bidirectional=encoder.bidirectional,
                                                 num_enc_layers=encoder.num_layers,
-                                                cell_type=encoder.cell_type)
+                                                cell_type=encoder.cell_type, max_pool=max_pool)
             self.pred_network = self.inf_network
 
         # This is done because the location and scale of the prior distribution are not considered
@@ -145,10 +186,25 @@ class AEVNMT(nn.Module):
     def generative_parameters(self):
         # TODO: separate the generative model into a GenerativeModel module
         #  within that module, have two modules, namely, LanguageModel and TranslationModel
-        return chain(self.lm_parameters(), self.tm_parameters())
+        return chain(self.lm_parameters(), self.tm_parameters(),self.bow_parameters())
 
     def lm_parameters(self):
-        return chain(self.language_model.parameters(), self.lm_init_layer.parameters())
+        lm_rev_parameters=iter(())
+        lm_rev_init_layer_parameters=iter(())
+        lm_shuf_parameters=iter(())
+        lm_shuf_init_layer_parameters=iter(())
+        made_parameters=iter(())
+
+        if self.language_model_rev is not None:
+            lm_rev_parameters=self.language_model_rev.parameters()
+            lm_rev_init_layer_parameters=self.lm_init_layer_rev.parameters()
+        if self.language_model_shuf is not None:
+            lm_shuf_parameters=self.language_model_shuf.parameters()
+            lm_shuf_init_layer_parameters=self.lm_init_layer_shuf.parameters()
+        if self.MADE is not None:
+            made_parameters=self.MADE.parameters()
+
+        return chain(self.language_model.parameters(), self.lm_init_layer.parameters() , lm_rev_parameters, lm_rev_init_layer_parameters, lm_shuf_parameters, lm_shuf_init_layer_parameters, made_parameters)
 
     def tm_parameters(self):
         params = chain(self.encoder.parameters(),
@@ -159,6 +215,9 @@ class AEVNMT(nn.Module):
         if not self.tied_embeddings:
             params = chain(params, [self.output_matrix])
         return params
+
+    def bow_parameters(self):
+        return iter(()) if self.bow_output_layer is None else self.bow_output_layer.parameters()
 
     def approximate_posterior(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y):
         """
@@ -213,15 +272,26 @@ class AEVNMT(nn.Module):
         hidden = tile_rnn_hidden(self.lm_init_layer(z), self.language_model.rnn)
         return hidden
 
-    def run_language_model(self, x, z):
+    def run_language_model(self, x, z, reverse=False, shuffled=False):
+        #TODO: shuf
         """
         Runs the language_model.
 
         :param x: unembedded source sentence
         :param z: a sample of the latent variable
         """
-        hidden = tile_rnn_hidden(self.lm_init_layer(z), self.language_model.rnn)
-        return self.language_model(x, hidden=hidden)
+        lm=self.language_model
+        init=self.lm_init_layer
+
+        if reverse:
+            lm=self.language_model_rev
+            init=self.lm_init_layer_rev
+        if shuffled:
+            lm=self.language_model_shuf
+            init=self.lm_init_layer_shuf
+
+        hidden=tile_rnn_hidden(init(z), lm.rnn)
+        return lm(x, hidden=hidden, z=z if self.feed_z else None)
 
     def forward(self, x, seq_mask_x, seq_len_x, y, z):
 
@@ -233,6 +303,30 @@ class AEVNMT(nn.Module):
         # variable.
         lm_logits = self.run_language_model(x, z)
 
+        lm_rev_logits=None
+        if self.language_model_rev is not None and not disable_x:
+            lm_rev_logits=self.run_language_model(x_rev,z,reverse=True)
+
+        lm_shuf_logits=None
+        if self.language_model_shuf is not None and not disable_x:
+            lm_shuf_logits=self.run_language_model(x_shuf,z,shuffled=True)
+
+        #TODO: think about dropout too
+        if self.bow_output_layer is not None and not disable_x:
+            bow_logits=self.bow_output_layer(z)
+        else:
+            bow_logits=None
+
+        MADE_logits=None
+        if self.MADE is not None:
+            #Create binary inputs
+            bsz=x.size(0)
+            made_input=torch.zeros((bsz,self.MADE.event_size),device=x.device)
+            for i in range(bsz):
+                bow=torch.unique(x_unshifted[i] * seq_mask_x[i].type_as(x_unshifted[i]))
+                made_input[i][bow]=1.0
+            MADE_logits=self.MADE(z,made_input)
+
         # Estimate the Categorical parameters for E[P(y|x, z)] using the given sample of the latent
         # variable.
         tm_logits = []
@@ -242,12 +336,12 @@ class AEVNMT(nn.Module):
             prev_y = y[:, t]
             y_embed = self.tgt_embed(prev_y)
             pre_output, hidden, att_weights = self.decoder.step(y_embed, hidden, seq_mask_x,
-                                                                encoder_outputs)
+                                                                encoder_outputs, z=z if self.feed_z else None)
             logits = self.generate(pre_output)
             tm_logits.append(logits)
             all_att_weights.append(att_weights)
 
-        return torch.cat(tm_logits, dim=1), lm_logits, torch.cat(all_att_weights, dim=1)
+        return torch.cat(tm_logits, dim=1), lm_logits, torch.cat(all_att_weights, dim=1),bow_logits,lm_rev_logits, lm_shuf_logits
 
     def compute_conditionals(self, x_in, seq_mask_x, seq_len_x, x_out, y_in, y_out, z):
         """
@@ -277,7 +371,7 @@ class AEVNMT(nn.Module):
             prev_y = y_in[:, t]
             y_embed = self.tgt_embed(prev_y)
             pre_output, hidden, _ = self.decoder.step(y_embed, hidden, seq_mask_x,
-                                                                encoder_outputs)
+                                                                encoder_outputs,z=z if self.feed_z else None)
             logits = self.generate(pre_output)
             tm_logits.append(logits)
         # [max_length, batch_size, vocab_size]
@@ -357,7 +451,7 @@ class AEVNMT(nn.Module):
         return -tm_loss
 
     def loss(self, tm_logits, lm_logits, targets_y, targets_x, qz, free_nats=0.,
-             KL_weight=1., reduction="mean", qz_prediction=None):
+             KL_weight=1., reduction="mean", qz_prediction=None, bow_logits=None,lm_rev_logits=None,lm_shuf_logits=None,MADE_logits=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -382,13 +476,32 @@ class AEVNMT(nn.Module):
         # Compute the language model categorical loss.
         lm_loss = self.language_model.loss(lm_logits, targets_x, reduction="none")
 
+        lm_rev_loss=0.0
+        if lm_rev_logits is not None:
+            lm_rev_loss=self.language_model_rev.loss(lm_rev_logits,targets_x_rev,reduction="none")
+
+        lm_shuf_loss=0.0
+        if lm_shuf_logits is not None:
+            lm_shuf_loss=self.language_model_shuf.loss(lm_shuf_logits,targets_x_shuf,reduction="none")
+
+        bow_loss=torch.zeros_like(lm_loss)
+        if bow_logits is not None:
+            bow_logprobs=-F.log_softmax(bow_logits,-1)
+            bsz=bow_logits.size(0)
+            for i in range(bsz):
+                bow=torch.unique(targets_x[i])
+                bow_mask=( bow != self.language_model.pad_idx)
+                bow=bow.masked_select(bow_mask)
+                bow_loss[i]=torch.sum( bow_logprobs[i][bow] )
+
         # Compute the KL divergence between the distribution used to sample z, and the prior
         # distribution.
         pz = self.prior().expand(qz.mean.size())
 
         # The loss is the negative ELBO.
         tm_log_likelihood = -tm_loss
-        lm_log_likelihood = -lm_loss
+        lm_log_likelihood = -lm_loss -lm_rev_loss - lm_shuf_loss
+        bow_log_likelihood = - bow_loss
 
         KL = torch.distributions.kl.kl_divergence(qz, pz)
         raw_KL = KL.sum(dim=1)
@@ -403,12 +516,13 @@ class AEVNMT(nn.Module):
         if free_nats > 0:
             KL = torch.clamp(KL, min=free_nats)
         KL *= KL_weight
-        elbo = tm_log_likelihood + lm_log_likelihood - KL - KL_prediction
+        elbo = tm_log_likelihood + lm_log_likelihood + bow_log_likelihood - KL - KL_prediction
         loss = -elbo
 
         out_dict = {
             'tm_log_likelihood': tm_log_likelihood,
             'lm_log_likelihood': lm_log_likelihood,
+            'bow_log_likelihood': bow_log_likelihood,
             'KL': KL,
             'raw_KL': raw_KL,
             'KL_prediction': KL_prediction

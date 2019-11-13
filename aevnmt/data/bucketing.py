@@ -2,7 +2,7 @@ import numpy as np
 
 class BucketingParallelDataLoader:
 
-    def __init__(self, dataloader, n=20, length_fn=lambda seq: len(seq.split()),add_reverse=False):
+    def __init__(self, dataloader, n=20, length_fn=lambda seq: len(seq.split()),add_reverse=False,add_tags=False):
         """
         Sorts by source sentence length descending (nice for RNN encoders),
         then by target length.
@@ -12,10 +12,10 @@ class BucketingParallelDataLoader:
         self.it = iter(dataloader)
         self.n = n
         self.add_reverse=add_reverse
+        self.add_tags=add_tags
 
         self._sort_next_batches()
         self.batch_size = dataloader.batch_size
-
 
 
     def _sort_next_batches(self):
@@ -27,6 +27,7 @@ class BucketingParallelDataLoader:
         src_shuf_batches= []
         tgt_shuf_batches= []
         for batch in self.it:
+            #TODO. change depending on value of add_tags
             if self.add_reverse:
                 src_batch, tgt_batch, src_rev_batch, tgt_rev_batch, src_shuf_batch, tgt_shuf_batch = batch
             else:

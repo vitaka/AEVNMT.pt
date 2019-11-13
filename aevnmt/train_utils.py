@@ -16,6 +16,8 @@ def load_data(hparams, vocab_src, vocab_tgt, use_memmap=False, val_tgt_suffix=""
     train_tgt = f"{hparams.training_prefix}.{hparams.tgt}"
     val_src = f"{hparams.validation_prefix}.{hparams.src}"
     val_tgt = f"{hparams.validation_prefix}.{hparams.tgt}{val_tgt_suffix}"
+    train_tgt_tags=f"{train_tgt}.tags"
+    val_tgt_tags=f"{val_tgt}.tags"
     opt_data = dict()
 
     if use_memmap:
@@ -49,8 +51,9 @@ def load_data(hparams, vocab_src, vocab_tgt, use_memmap=False, val_tgt_suffix=""
                 max_length=hparams.max_sentence_length
             )
     else:
-        training_data = ParallelDataset(train_src, train_tgt, max_length=hparams.max_sentence_length,add_reverse= hparams.reverse_lm, add_shuffled=hparams.shuffle_lm)
-        val_data = ParallelDataset(val_src, val_tgt, max_length=-1,add_reverse= hparams.reverse_lm,add_shuffled=hparams.shuffle_lm)
+
+        training_data = ParallelDataset(train_src, train_tgt, max_length=hparams.max_sentence_length,add_reverse= hparams.reverse_lm, add_shuffled=hparams.shuffle_lm, additional_tags_file=  train_tgt_tags if hparams.pos_loss else None)
+        val_data = ParallelDataset(val_src, val_tgt, max_length=-1,add_reverse= hparams.reverse_lm,add_shuffled=hparams.shuffle_lm,additional_tags_file= val_tgt_tags if hparams.pos_loss else None)
         if hparams.mono_src:
             opt_data['mono_src'] = TextDataset(hparams.mono_src, max_length=hparams.max_sentence_length)
         if hparams.mono_tgt:
@@ -64,6 +67,10 @@ def load_vocabularies(hparams):
     train_tgt = f"{hparams.training_prefix}.{hparams.tgt}"
     val_src = f"{hparams.validation_prefix}.{hparams.src}"
     val_tgt = f"{hparams.validation_prefix}.{hparams.tgt}"
+    train_tgt_tags="f{train_tgt}.tags"
+    val_tgt_tags="f{val_tgt}.tags"
+
+    vocab_tgt_tags=None
 
     # Construct the vocabularies.
     if hparams.vocab_prefix is not None:
@@ -101,7 +108,12 @@ def load_vocabularies(hparams):
             vocab_tgt = Vocabulary.from_data(tgt_files, min_freq=hparams.vocab_min_freq,
                                              max_size=hparams.max_vocab_size)
 
-    return vocab_src, vocab_tgt
+            tgt_tags_files=[train_tgt_tags,val_tgt_tags]
+            if hparams.pos_loss:
+                vocab_tgt_tags=Vocabulary.from_data(tgt_tags_files, min_freq=hparams.vocab_min_freq,
+                                                 max_size=hparams.max_vocab_size)
+    #TODO: enable me later
+    return vocab_src, vocab_tgt#, vocab_tgt_tags
 
 def create_decoder(attention, hparams):
     init_from_encoder_final = (hparams.model_type == "cond_nmt")
@@ -112,7 +124,8 @@ def create_decoder(attention, hparams):
                                dropout=hparams.dropout,
                                num_layers=hparams.num_dec_layers,
                                cell_type=hparams.cell_type,
-                               init_from_encoder_final=init_from_encoder_final)
+                               init_from_encoder_final=init_from_encoder_final,
+                               feed_z_size=hparams.latent_size if hparams.feed_z else 0)
     elif hparams.decoder_style == "luong":
         return LuongDecoder(emb_size=hparams.emb_size,
                             hidden_size=hparams.hidden_size,
@@ -120,7 +133,8 @@ def create_decoder(attention, hparams):
                             dropout=hparams.dropout,
                             num_layers=hparams.num_dec_layers,
                             cell_type=hparams.cell_type,
-                            init_from_encoder_final=init_from_encoder_final)
+                            init_from_encoder_final=init_from_encoder_final,
+                            feed_z_size=hparams.latent_size if hparams.feed_z else 0)
     else:
         raise Exception(f"Unknown decoder style: {hparams.decoder_style}")
 

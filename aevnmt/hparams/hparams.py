@@ -72,6 +72,7 @@ options = {
     "masked_lm_weight_prop_prob": (bool, False, False, "Set weight of masked LM to 1/masked_lm_mask_prob", 1),
     "masked_lm_mask_z_final": (bool, False, False, "In masked LM, feed z in the final FF instead of at the beginning", 1),
     "masked_lm_bert": (bool, False, False, "Perform replacements as in BERT.", 1),
+    "pos_loss": (bool, False, False, "Add a PoS prediction side loss.", 1),
     "multi_task_stop_main": (bool, False, False, "When additing side losses, early stop based on the main LM", 1),
     "reverse_lm_shareemb":(bool, False, False, "The reverse or shuffled LM shares embeddings", 1),
     "disable_KL":(bool, False, False, "Disable KL divergence", 1),
@@ -94,6 +95,7 @@ options = {
     "re_generate_sl": (bool, False, False, "When decoding, generate SL sentences with the LM instead of translations.", 2),
     "re_generate_tl": (bool, False, False, "When decoding, generate TL sentences with the LM instead of translations.", 2),
     "re_generate_reverse": (bool, False, False, "Use reverse LM to re-generate.", 2),
+    "force_first_token": (str, None, False, "Force that this word is the first token during decoding", 2),
 
     # Optimization hyperparameters
     "gen_optimizer": (str, "adam", False, "Optimizer for generative parameters (options: adam, amsgrad, adadelta, sgd)", 3),

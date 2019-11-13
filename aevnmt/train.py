@@ -65,7 +65,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
     # Create a dataloader that buckets the batches.
     dl = DataLoader(training_data, batch_size=hparams.batch_size,
                     shuffle=True, num_workers=4)
-    bucketing_dl = BucketingParallelDataLoader(dl,add_reverse=hparams.reverse_lm or hparams.shuffle_lm)
+    bucketing_dl = BucketingParallelDataLoader(dl,add_reverse=hparams.reverse_lm or hparams.shuffle_lm, add_tags=hparams.pos_loss)
 
     # Save the best model based on development BLEU.
     ckpt = CheckPoint(model_dir=out_dir/"model", metrics=['bleu', 'likelihood'])
@@ -250,6 +250,7 @@ def main():
     hparams.print_values()
 
     # Load the data and print some statistics.
+    #vocab_src, vocab_tgt, vocab_tgt_tags = load_vocabularies(hparams)
     vocab_src, vocab_tgt = load_vocabularies(hparams)
     if hparams.share_vocab:
         print("\n==== Vocabulary")

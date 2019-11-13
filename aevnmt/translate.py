@@ -223,6 +223,8 @@ class TranslationEngine:
                 moreargs['use_tl_lm']=True
             if hparams.re_generate_reverse:
                 moreargs['use_reverse_lm']=True
+            if hparams.force_first_token:
+                moreargs['force_first_token']=hparams.force_first_token
             hypotheses,zs = self.translate_fn(
                 self.model, input_sentences,
                 self.vocab_src, self.vocab_tgt,
