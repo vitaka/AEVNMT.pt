@@ -120,7 +120,7 @@ class TranslationEngine:
         if self.verbose:
             print(f"Restoring model selected wrt {self.hparams.criterion} from {self.model_checkpoint}", file=sys.stderr)
 
-        model, _, _, translate_fn = create_model(self.hparams, self.vocab_src, self.vocab_tgt)
+        model, _, _, translate_fn, sample_fn = create_model(self.hparams, self.vocab_src, self.vocab_tgt)
         if self.hparams.use_gpu:
             model.load_state_dict(torch.load(self.model_checkpoint))
         else:
@@ -128,11 +128,13 @@ class TranslationEngine:
 
         self.model = model.to(self.device)
         self.translate_fn = translate_fn
+        if self.hparams.re_generate_sl:
+            self.translate_fn=sample_fn
         self.model.eval()
         if self.verbose:
             print("Done loading in %.2f seconds" % (time.time() - t0), file=sys.stderr)
 
-    def translate(self, lines: list, stdout=sys.stdout):
+    def translate(self, lines: list, stdout=sys.stdout,z_lines=None):
         hparams = self.hparams
         if hparams.split_sentences:  # This is a type of pre-processing we do not a post-processing counterpart for
             if hparams.verbose:
@@ -142,10 +144,17 @@ class TranslationEngine:
                 print(f"Produced {len(lines)} sentences")
         if not lines:  # we do not like empty jobs
             return []
+
+        aux_data_generator=None
+        #assert not (z_lines is not None and y_lines is not None)
+        if z_lines is not None:
+            aux_data_generator=({'z':eval(l)} for l in z_lines)
+
         input_data = InputTextDataset(
             generator=(self.pipeline.pre(line) for line in lines),
             max_length=hparams.max_sentence_length,
-            split=True)
+            split=True,
+            aux_data_generator=aux_data_generator)
         input_dl = DataLoader(
             input_data, batch_size=hparams.batch_size,
             shuffle=False, num_workers=4)
@@ -154,29 +163,45 @@ class TranslationEngine:
         # Translate the data.
         num_translated = 0
         all_hypotheses = []
+        all_zs=[]
         if self.verbose:
             print(f"Translating {input_size} sentences...", file=sys.stderr)
 
         for input_sentences in input_dl:
+            input_zs=None
+            if 'z' in input_sentences:
+                #For some reason, Torch DataLoader transposed the input zs
+                #and we need to restore to (batch_size, z_dim) size
+                input_zs=torch.stack(input_sentences['z'],dim=0).transpose(1,0)
 
             # Sort the input sentences from long to short.
-            input_sentences = np.array(input_sentences)
+            input_sentences = np.array(input_sentences['sentence'])
             seq_len = np.array([len(s.split()) for s in input_sentences])
             sort_keys = np.argsort(-seq_len)
             input_sentences = input_sentences[sort_keys]
+            if input_zs is not None:
+                input_zs=input_zs[sort_keys]
 
+            moreargs={}
+            if hparams.sample_prior_decoding:
+                moreargs['use_prior']=True
+                moreargs['deterministic']=False
+            if input_zs is not None:
+                moreargs['z']=input_zs.float()
             t1 = time.time()
             # Translate the sentences using the trained model.
-            hypotheses = self.translate_fn(
+            hypotheses,zs = self.translate_fn(
                 self.model, input_sentences,
                 self.vocab_src, self.vocab_tgt,
-                self.device, hparams)
+                self.device, hparams, **moreargs)
 
             num_translated += len(input_sentences)
 
             # Restore the original ordering.
             inverse_sort_keys = np.argsort(sort_keys)
             all_hypotheses += hypotheses[inverse_sort_keys].tolist()
+            if zs is not None:
+                all_zs+=zs[inverse_sort_keys].tolist()
 
             if self.verbose:
                 print(f"{num_translated}/{input_size} sentences translated in {time.time() - t1:.2f} seconds.", file=sys.stderr)
@@ -197,7 +222,7 @@ class TranslationEngine:
 
         self.n_translated += len(input_data)
 
-        return all_hypotheses
+        return all_hypotheses,all_zs
 
     def interactive_translation_n(self, generator=sys.stdin, wait_for=1, stdout=sys.stdout):
         if self.verbose:
@@ -217,27 +242,49 @@ class TranslationEngine:
         for i, line in enumerate(generator):
             self.translate([line], stdout=stdout)
 
-    def translate_file(self, input_path, output_path=None, reference_path=None, stdout=None):
+    def translate_file(self, input_path, output_path=None, reference_path=None, stdout=None,num_prior_samples=None,input_z_path=None,output_z_path=None):
         if output_path is None:
             stdout = sys.stdout
 
-        with open(input_path) as f:  # TODO: optionally segment input file into slices of n lines each
-            translations = self.translate(f.readlines(), stdout=stdout)
-            # If a reference set is given compute BLEU score.
-            if reference_path is not None:
-                ref_sentences = TextDataset(reference_path).data
-                if self.hparams.postprocess_ref:
-                    ref_sentences = [self.pipeline.post(r) for r in ref_sentences]
-                bleu = compute_bleu(translations, ref_sentences, subword_token=None)
-                print(f"\nBLEU = {bleu:.4f}")
+        z_lines=None
+        if input_z_path is not None:
+            with open(input_z_path) as z_f:
+                z_lines=z_f.readlines()
 
-            # If an output file is given write the output to that file.
-            if output_path is not None:
+        in_lines=[]
+        if (num_prior_samples is not None or input_z_path is not None) and self.hparams.re_generate_sl :
+            if num_prior_samples is not None:
+                num_lines=num_prior_samples
+            else:
+                num_lines=len(z_lines)
+            in_lines=[ "PRIOR" for i in range(num_lines)]
+        else:
+            with open(input_path) as f:  # TODO: optionally segment input file into slices of n lines each
+                in_lines=f.readlines()
+
+        translations,zs = self.translate(in_lines, stdout=stdout,z_lines=z_lines)
+        # If a reference set is given compute BLEU score.
+        if reference_path is not None:
+            ref_sentences = TextDataset(reference_path).data
+            if self.hparams.postprocess_ref:
+                ref_sentences = [self.pipeline.post(r) for r in ref_sentences]
+            bleu = compute_bleu(translations, ref_sentences, subword_token=None)
+            print(f"\nBLEU = {bleu:.4f}")
+
+        # If an output file is given write the output to that file.
+        if output_path is not None:
+            if self.verbose:
+                print(f"\nWriting translation output to {output_path}", file=sys.stderr)
+            with open(output_path, "w") as f:
+                for translation in translations:
+                    f.write(f"{translation}\n")
+
+        if output_z_path is not None:
                 if self.verbose:
-                    print(f"\nWriting translation output to {output_path}", file=sys.stderr)
-                with open(output_path, "w") as f:
-                    for translation in translations:
-                        f.write(f"{translation}\n")
+                    print(f"\nWriting zs to {output_z_path}", file=sys.stderr)
+                with open(output_z_path, "w") as f:
+                    for z in zs:
+                        f.write("{}\n".format(z))
 
     def translate_stdin(self, stdout=sys.stdout):
         lines = [line for line in sys.stdin]
@@ -270,7 +317,10 @@ def main(hparams=None):
         engine.translate_file(
             input_path=hparams.translation_input_file,
             output_path=hparams.translation_output_file,
-            reference_path=hparams.translation_ref_file
+            reference_path=hparams.translation_ref_file,
+            num_prior_samples=hparams.sample_prior_decoding if hparams.sample_prior_decoding > 0 else None,
+            input_z_path=hparams.z_input_file,
+            output_z_path=hparams.z_output_file
         )
 
 if __name__ == "__main__":

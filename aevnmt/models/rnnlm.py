@@ -7,7 +7,7 @@ from aevnmt.components import rnn_creation_fn
 class RNNLM(nn.Module):
 
     def __init__(self, vocab_size, emb_size, hidden_size, pad_idx,
-                 dropout, num_layers, cell_type, tied_embeddings, feed_z_size=0,embedder=None):
+                 dropout, num_layers, cell_type, tied_embeddings, feed_z_size=0,gate_z=False,embedder=None):
         """
         An RNN language model.
         """
@@ -25,12 +25,20 @@ class RNNLM(nn.Module):
             self.output_matrix = nn.Parameter(torch.randn(vocab_size, hidden_size))
         self.dropout_layer = nn.Dropout(p=dropout)
 
+        self.gate_linear=None
+        if gate_z:
+            self.gate_linear=nn.Linear(emb_size+feed_z_size+hidden_size,feed_z_size)
+
     def step(self, x_embed, hidden,z=None):
         rnn_input = x_embed.unsqueeze(1)
         if z is not None:
             #z: (B, latent_size)
             #Concatenate z to RNN input at each timestep
-            rnn_input=torch.cat([ rnn_input, z.unsqueeze(1)  ],dim=-1)
+            if self.gate_linear is not None:
+                z_in=z * torch.sigmoid(self.gate_linear(torch.cat([x_embed,z,hidden.squeeze(0)],dim=-1)) )
+            else:
+                z_in=z
+            rnn_input=torch.cat([ rnn_input, z_in.unsqueeze(1)  ],dim=-1)
         rnn_output, hidden = self.rnn(rnn_input, hidden)
         rnn_output = self.dropout_layer(rnn_output)
         W_out = self.embedder.weight if self.tied_embeddings else self.output_matrix
@@ -47,7 +55,11 @@ class RNNLM(nn.Module):
             if z is not None:
                 #z: (B, latent_size)
                 #Concatenate z to RNN input at each timestep
-                rnn_input=torch.cat([ rnn_input, z.unsqueeze(1)  ],dim=-1)
+                if self.gate_linear is not None:
+                    z_in=z.unsqueeze(1) * torch.sigmoid(self.gate_linear(torch.cat([rnn_input,z.unsqueeze(1),hidden.transpose(0,1)],dim=-1)) )
+                else:
+                    z_in=z.unsqueeze(1)
+                rnn_input=torch.cat([ rnn_input, z_in  ],dim=-1)
             rnn_output, hidden = self.rnn(rnn_input, hidden)
             rnn_output = self.dropout_layer(rnn_output)
             W_out = self.embedder.weight if self.tied_embeddings else self.output_matrix

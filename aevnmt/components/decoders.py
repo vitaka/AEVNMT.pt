@@ -14,7 +14,7 @@ def tile_rnn_hidden_for_decoder(hidden, decoder):
 class BahdanauDecoder(nn.Module):
 
     def __init__(self, emb_size, hidden_size, attention,
-                 dropout=0., num_layers=1, cell_type="lstm", init_from_encoder_final=True,feed_z_size=0):
+                 dropout=0., num_layers=1, cell_type="lstm", init_from_encoder_final=True,feed_z_size=0,gate_z=False):
         """
         RNN decoder with Bahdanau style updates.
         """
@@ -33,6 +33,10 @@ class BahdanauDecoder(nn.Module):
 
         if init_from_encoder_final:
             self.init_layer = nn.Linear(attention.key_size, hidden_size)
+
+        self.gate_linear=None
+        if gate_z:
+            self.gate_linear=nn.Linear(emb_size+feed_z_size+hidden_size,feed_z_size)
 
     def init_decoder(self, encoder_outputs, encoder_final):
 
@@ -62,7 +66,11 @@ class BahdanauDecoder(nn.Module):
         if z is not None:
             #z: (B, latent_size)
             #Concatenate z to RNN input at each timestep
-            prev_embed=torch.cat([ prev_embed, z ],dim=-1)
+            if self.gate_linear is not None:
+                z_in=z * torch.sigmoid(self.gate_linear(torch.cat([prev_embed,z,query.squeeze(0)],dim=-1)) )
+            else:
+                z_in=z
+            prev_embed=torch.cat([ prev_embed, z_in ],dim=-1)
 
         # Compute the context vector.
         query = query[-1].unsqueeze(1)
@@ -97,7 +105,11 @@ class BahdanauDecoder(nn.Module):
             if z is not None:
                 #z: (B, latent_size)
                 #Concatenate z to RNN input at each timestep
-                prev_embed=torch.cat([ prev_embed, z ],dim=-1)
+                if self.gate_linear is not None:
+                    z_in=z.unsqueeze(1) * torch.sigmoid(self.gate_linear(torch.cat([prev_embed,z.unsqueeze(1),hidden.transpose(0,1)],dim=-1)) )
+                else:
+                    z_in=z.unsqueeze(1)
+                prev_embed=torch.cat([ prev_embed, z_in ],dim=-1)
             pre_output, hidden, att_weights = self.step(prev_embed, hidden, x_mask,
                                                         encoder_outputs)
             outputs.append(pre_output)
@@ -108,7 +120,7 @@ class BahdanauDecoder(nn.Module):
 class LuongDecoder(nn.Module):
 
     def __init__(self, emb_size, hidden_size, attention,
-                 dropout=0., num_layers=1, cell_type="lstm", init_from_encoder_final=True,feed_z_size=0):
+                 dropout=0., num_layers=1, cell_type="lstm", init_from_encoder_final=True,feed_z_size=0,gate_z=False):
         """
         RNN decoder with Luong style updates.
         """
@@ -127,6 +139,10 @@ class LuongDecoder(nn.Module):
 
         if init_from_encoder_final:
             self.init_layer = nn.Linear(attention.key_size, hidden_size)
+
+        self.gate_linear=None
+        if gate_z:
+            self.gate_linear=nn.Linear(emb_size+feed_z_size+hidden_size,feed_z_size)
 
     def init_decoder(self, encoder_outputs, encoder_final):
         """
@@ -167,7 +183,11 @@ class LuongDecoder(nn.Module):
         if z is not None:
             #z: (B, latent_size)
             #Concatenate z to RNN input at each timestep
-            prev_embed=torch.cat([ prev_embed, z ],dim=-1)
+            if self.gate_linear is not None:
+                z_in=z * torch.sigmoid(self.gate_linear(torch.cat([prev_embed,z,hidden.squeeze(0)],dim=-1)) )
+            else:
+                z_in=z
+            prev_embed=torch.cat([ prev_embed, z_in ],dim=-1)
 
         # Update the RNN hidden state.
         prev_embed = prev_embed.unsqueeze(1)
@@ -209,7 +229,11 @@ class LuongDecoder(nn.Module):
             if z is not None:
                 #z: (B, latent_size)
                 #Concatenate z to RNN input at each timestep
-                prev_embed=torch.cat([ prev_embed, z ],dim=-1)
+                if self.gate_linear is not None:
+                    z_in=z.unsqueeze(1) * torch.sigmoid(self.gate_linear(torch.cat([prev_embed,z.unsqueeze(1),hidden.transpose(0,1)],dim=-1)) )
+                else:
+                    z_in=z.unsqueeze(1)
+                prev_embed=torch.cat([ prev_embed, z_in ],dim=-1)
             pre_output, hidden, att_weights = self.step(prev_embed, hidden, x_mask,
                                                         encoder_outputs)
             outputs.append(pre_output)
