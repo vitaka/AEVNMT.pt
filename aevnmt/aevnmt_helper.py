@@ -363,7 +363,7 @@ def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams):
         references = []
         model_hypotheses = []
         for sentences_x, sentences_y in val_dl:
-            hypothesis = translate(model, sentences_x, vocab_src, vocab_tgt, device, hparams)
+            hypothesis,zs = translate(model, sentences_x, vocab_src, vocab_tgt, device, hparams)
 
             # Keep track of inputs, references and model hypotheses.
             inputs += sentences_x.tolist()
