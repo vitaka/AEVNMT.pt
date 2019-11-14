@@ -262,7 +262,7 @@ class AEVNMT(nn.Module):
         lm_logits = self.run_language_model(x, z)
 
         lm_shuf_logits=None
-        if self.language_model_shuf is not None and not disable_x:
+        if self.language_model_shuf is not None:
             lm_shuf_logits=self.run_language_model(x_shuf,z,shuffled=True)
 
         if self.bow_output_layer is not None:
