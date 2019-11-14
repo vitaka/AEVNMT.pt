@@ -55,7 +55,11 @@ class RNNLM(nn.Module):
                 #z: (B, latent_size)
                 #Concatenate z to RNN input at each timestep
                 if self.gate_linear is not None:
-                    z_in=z.unsqueeze(1) * torch.sigmoid(self.gate_linear(torch.cat([rnn_input,z.unsqueeze(1),hidden.transpose(0,1)],dim=-1)) )
+                    if self.cell_type == "lstm":
+                        query = hidden[0]
+                    else:
+                        query = hidden
+                    z_in=z.unsqueeze(1) * torch.sigmoid(self.gate_linear(torch.cat([rnn_input,z.unsqueeze(1),query.transpose(0,1)],dim=-1)) )
                 else:
                     z_in=z.unsqueeze(1)
                 rnn_input=torch.cat([ rnn_input, z_in  ],dim=-1)
