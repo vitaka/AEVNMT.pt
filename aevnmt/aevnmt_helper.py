@@ -107,7 +107,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
                         shuffle=False, num_workers=4)
     val_dl = BucketingParallelDataLoader(val_dl)
 
-    val_ppl, val_NLL, val_KL, val_NLL_bow, val_NLL_bow_tl = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
+    val_ppl, val_NLL, val_KL, val_NLL_bow, val_NLL_bow_tl, val_NLL_MADE = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
     val_bleu, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
                                                   device, hparams)
 
@@ -117,6 +117,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
           f" -- validation NLL = {val_NLL:,.2f}"
           f" -- validation NLL BoW SL = {val_NLL_bow:,.2f}"
           f" -- validation NLL BoW TL = {val_NLL_bow_tl:,.2f}"
+          f" -- validation NLL MADE = {val_NLL_MADE:,.2f}"
           f" -- validation BLEU = {val_bleu:.2f}"
           f" -- validation KL = {val_KL:.2f}\n"
           f"- Source: {inputs[random_idx]}\n"
@@ -147,7 +148,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
             x_in, _, seq_mask_x, seq_len_x = create_batch([val_sentence_x], vocab_src, device)
             y_in, y_out, seq_mask_y, seq_len_y = create_batch([val_sentence_y], vocab_tgt, device)
             z = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y).sample()
-            _, _, att_weights,_,_ = model(x_in, seq_mask_x, seq_len_x, y_in, z)
+            _, _, att_weights,_,_,_ = model(x_in, seq_mask_x, seq_len_x, y_in, z)
             att_weights = att_weights.squeeze().cpu().numpy()
         src_labels = batch_to_sentences(x_in, vocab_src, no_filter=True)[0].split()
         tgt_labels = batch_to_sentences(y_out, vocab_tgt, no_filter=True)[0].split()
