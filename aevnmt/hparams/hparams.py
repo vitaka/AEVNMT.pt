@@ -83,7 +83,7 @@ options = {
 
     "bow_loss":(bool, False, False, "Add SL bag-of-words term to the loss", 1),
     "bow_loss_tl":(bool, False, False, "Add TL bag-of-words term to the loss", 1),
-
+    "MADE_loss":(bool, False, False, "Add SL MADE term to the loss", 1),
 
     "encoder_style": (str, "rnn", False, "The type of encoder architecture: rnn|transformer", 1),
     "decoder_style": (str, "luong", False, "Decoder style: luong|bahdanau", 1),

@@ -8,6 +8,11 @@ from aevnmt.components.nli import DecomposableAttentionEncoder as NLIEncoder
 from aevnmt.dist import get_named_params
 from aevnmt.dist import NormalLayer, KumaraswamyLayer
 from probabll.distributions import MixtureOfGaussians
+from torch.distributions import Bernoulli
+
+from dgm.conditional import MADEConditioner
+from dgm.likelihood import AutoregressiveLikelihood
+
 from .inference import get_inference_encoder
 from .inference import InferenceNetwork
 
@@ -18,7 +23,7 @@ class AEVNMT(nn.Module):
 
     def __init__(self, tgt_vocab_size, emb_size, latent_size, encoder, decoder, language_model,
             pad_idx, dropout, tied_embeddings, prior_family: str, prior_params: list, posterior_family: str,
-            inf_encoder_style: str, inf_conditioning: str,feed_z=False,max_pool=False, bow=False, bow_tl=False):
+            inf_encoder_style: str, inf_conditioning: str,feed_z=False,max_pool=False, bow=False, bow_tl=False,MADE=False):
         super().__init__()
         self.feed_z=feed_z
         self.latent_size = latent_size
@@ -69,6 +74,21 @@ class AEVNMT(nn.Module):
         if bow_tl:
             self.bow_output_layer_tl = nn.Linear(latent_size,
                                               self.tgt_embedder.num_embeddings, bias=True)
+
+        self.MADE=None
+        if MADE:
+            made = MADEConditioner(
+                input_size= self.language_model.embedder.num_embeddings + self.latent_size,  # our only input to the MADE layer is the observation
+                output_size= self.language_model.embedder.num_embeddings,  # number of parameters to predict
+                context_size=self.latent_size,
+                hidden_sizes=[decoder.hidden_size, decoder.hidden_size], # TODO: is this OK?
+                num_masks=10 #TODO: is that OK?
+            )
+            self.MADE = AutoregressiveLikelihood(
+                event_size=self.language_model.embedder.num_embeddings,  # size of observation
+                dist_type=Bernoulli,
+                conditioner=made
+                )
 
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
@@ -122,9 +142,11 @@ class AEVNMT(nn.Module):
     def generative_parameters(self):
         # TODO: separate the generative model into a GenerativeModel module
         #  within that module, have two modules, namely, LanguageModel and TranslationModel
-        return chain(self.lm_parameters(), self.tm_parameters(), self.bow_parameters())
+        return chain(self.lm_parameters(), self.tm_parameters(), self.side_losses_parameters())
 
-    def bow_parameters(self):
+    def side_losses_parameters(self):
+        made_parameters=iter(())
+
         if self.bow_output_layer is None:
             bow_params=iter(())
         else:
@@ -135,7 +157,10 @@ class AEVNMT(nn.Module):
         else:
             bow_params_tl=self.bow_output_layer_tl.parameters()
 
-        return chain( bow_params  , bow_params_tl   )
+        if self.MADE is not None:
+            made_parameters=self.MADE.parameters()
+
+        return chain( bow_params  , bow_params_tl  , made_parameters  )
 
     def lm_parameters(self):
         return chain(self.language_model.parameters(), self.lm_init_layer.parameters())
@@ -228,6 +253,16 @@ class AEVNMT(nn.Module):
         else:
             bow_logits_tl=None
 
+        MADE_logits=None
+        if self.MADE is not None:
+            #Create binary inputs
+            bsz=x.size(0)
+            made_input=torch.zeros((bsz,self.MADE.event_size),device=x.device)
+            for i in range(bsz):
+                bow=torch.unique(x[i] * seq_mask_x[i].type_as(x[i]))
+                made_input[i][bow]=1.0
+            MADE_logits=self.MADE(z,made_input)
+
 
         # Estimate the Categorical parameters for E[P(y|x, z)] using the given sample of the latent
         # variable.
@@ -243,7 +278,7 @@ class AEVNMT(nn.Module):
             tm_logits.append(logits)
             all_att_weights.append(att_weights)
 
-        return torch.cat(tm_logits, dim=1), lm_logits, torch.cat(all_att_weights, dim=1),bow_logits,bow_logits_tl
+        return torch.cat(tm_logits, dim=1), lm_logits, torch.cat(all_att_weights, dim=1),bow_logits,bow_logits_tl,MADE_logits
 
     def compute_conditionals(self, x_in, seq_mask_x, seq_len_x, x_out, y_in, y_out, z):
         """
@@ -353,7 +388,7 @@ class AEVNMT(nn.Module):
         return -tm_loss
 
     def loss(self, tm_logits, lm_logits, targets_y, targets_x, qz, free_nats=0.,
-             KL_weight=1., reduction="mean", bow_logits=None, bow_logits_tl=None):
+             KL_weight=1., reduction="mean", bow_logits=None, bow_logits_tl=None, MADE_logits=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -399,6 +434,16 @@ class AEVNMT(nn.Module):
                 bow=bow.masked_select(bow_mask)
                 bow_loss_tl[i]=torch.sum( bow_logprobs[i][bow] )
 
+        MADE_loss=torch.zeros_like(lm_loss)
+        if MADE_logits is not None:
+            bsz=targets_x.size(0)
+            made_ref=torch.zeros((bsz,self.MADE.event_size),device=targets_x.device)
+            for i in range(bsz):
+                bow=torch.unique(targets_x[i] )
+                made_ref[i][bow]=1.0
+            MADE_loss=-MADE_logits.log_prob(made_ref).sum(-1)
+
+
         # Compute the KL divergence between the distribution used to sample z, and the prior
         # distribution.
         pz = self.prior()  #.expand(qz.mean.size())
@@ -407,7 +452,7 @@ class AEVNMT(nn.Module):
         tm_log_likelihood = -tm_loss
         lm_log_likelihood = -lm_loss
 
-        bow_log_likelihood = - bow_loss - bow_loss_tl
+        bow_log_likelihood = - bow_loss - bow_loss_tl - MADE_loss
 
 
         # TODO: N this is [...,D], whereas with MoG this is [...]

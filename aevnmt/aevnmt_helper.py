@@ -58,7 +58,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                    feed_z=hparams.feed_z,
                    max_pool=hparams.max_pooling_states,
                    bow=hparams.bow_loss,
-                   bow_tl=hparams.bow_loss_tl)
+                   bow_tl=hparams.bow_loss_tl,MADE=hparams.MADE_loss,)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
@@ -69,7 +69,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     z = qz.rsample()
 
     # Compute the translation and language model logits.
-    tm_logits, lm_logits, _, bow_logits, bow_logits_tl = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, z)
+    tm_logits, lm_logits, _, bow_logits, bow_logits_tl,MADE_logits = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, z)
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
@@ -83,7 +83,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
                       KL_weight=KL_weight,
                       reduction="mean",
                       bow_logits=bow_logits,
-                      bow_logits_tl=bow_logits_tl)
+                      bow_logits_tl=bow_logits_tl,MADE_logits=MADE_logits)
 
     if summary_writer:
         summary_writer.add_histogram("posterior/z", z, step)
@@ -320,6 +320,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
         log_marginal = 0.
         log_marginal_bow = 0.
         log_marginal_bow_tl = 0.
+        log_marginal_MADE= 0.
         total_KL = 0.
         n_samples = 10
         for sentences_x, sentences_y in val_dl:
@@ -338,6 +339,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
 
             batch_log_marginals_bow = torch.zeros(n_samples, batch_size)
             batch_log_marginals_bow_tl = torch.zeros(n_samples, batch_size)
+            batch_log_marginals_MADE = torch.zeros(n_samples, batch_size)
 
             bow_indexes=[]
             if model.bow_output_layer is not None:
@@ -361,7 +363,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 z = qz.sample()
 
                 # Compute the logits according to this sample of z.
-                tm_logits, lm_logits, _,bow_logits, bow_logits_tl = model(x_in, seq_mask_x, seq_len_x, y_in, z)
+                tm_logits, lm_logits, _,bow_logits, bow_logits_tl,MADE_logits = model(x_in, seq_mask_x, seq_len_x, y_in, z)
 
                 # Compute log P(y|x, z_s)
                 log_tm_prob = F.log_softmax(tm_logits, dim=-1)
@@ -390,6 +392,16 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                         bow=bow_indexes_tl[i]
                         log_bow_prob_tl[i]=torch.sum( bow_logprobs_tl[i][bow] )
 
+
+                log_MADE_prob=torch.zeros_like(log_lm_prob)
+                if MADE_logits is not None:
+                    bsz=x_out.size(0)
+                    made_ref=torch.zeros((bsz,model.MADE.event_size),device=x_out.device)
+                    for i in range(bsz):
+                        bow=torch.unique(x_out[i] )
+                        made_ref[i][bow]=1.0
+                    log_MADE_prob=MADE_logits.log_prob(made_ref).sum(-1)
+
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
                 log_pz = pz.log_prob(z) # [B, latent_size] -> [B]
                 log_qz = qz.log_prob(z)
@@ -400,6 +412,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 # Estimate the importance weighted estimate of BoW P(x) and  P(y)
                 batch_log_marginals_bow[s] = log_bow_prob + log_pz - log_qz
                 batch_log_marginals_bow_tl[s] = log_bow_prob_tl + log_pz - log_qz
+                batch_log_marginals_MADE[s] = log_MADE_prob + log_pz - log_qz
+
 
 
             # Average over all samples.
@@ -409,9 +423,13 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                                  torch.log(torch.Tensor([n_samples]))
             batch_log_marginals_bow_tl = torch.logsumexp(batch_log_marginals_bow_tl, dim=0) - \
                                  torch.log(torch.Tensor([n_samples]))
+            batch_log_marginals_MADE = torch.logsumexp(batch_log_marginals_MADE, dim=0) - \
+                                 torch.log(torch.Tensor([n_samples]))
+
             log_marginal += batch_log_marginal.sum().item() # [B] -> []
             log_marginal_bow += batch_log_marginals_bow.sum().item() # [B] -> []
             log_marginal_bow_tl += batch_log_marginals_bow_tl.sum().item() # [B] -> []
+            log_marginal_MADE+=batch_log_marginals_MADE.sum().item()
 
             num_sentences += batch_size
             num_predictions += (seq_len_x.sum() + seq_len_y.sum()).item()
@@ -419,9 +437,10 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
     val_NLL = -log_marginal
     val_NLL_bow = - log_marginal_bow
     val_NLL_bow_tl = - log_marginal_bow_tl
+    val_NLL_MADE = - log_marginal_MADE
 
     val_perplexity = np.exp(val_NLL / num_predictions)
-    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, val_NLL_bow/num_sentences, val_NLL_bow_tl/num_sentences
+    return val_perplexity, val_NLL/num_sentences, total_KL/num_sentences, val_NLL_bow/num_sentences, val_NLL_bow_tl/num_sentences, val_NLL_MADE/num_sentences
 
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
