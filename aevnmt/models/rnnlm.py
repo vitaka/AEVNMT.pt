@@ -16,6 +16,7 @@ class RNNLM(nn.Module):
         self.hidden_size = hidden_size
         self.embedder = nn.Embedding(vocab_size, emb_size, padding_idx=pad_idx) if embedder is None else embedder
         rnn_dropout = 0. if num_layers == 1 else dropout
+        self.cell_type=cell_type
         rnn_fn = rnn_creation_fn(cell_type)
         self.rnn = rnn_fn(emb_size+feed_z_size, hidden_size, batch_first=True,
                           dropout=rnn_dropout, num_layers=num_layers)
