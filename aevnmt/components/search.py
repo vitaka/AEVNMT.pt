@@ -23,6 +23,8 @@ def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_output
     prev_y = torch.full(size=[batch_size], fill_value=sos_idx, dtype=torch.long,
                         device=seq_mask_x.device)
 
+    lm_decoding= (encoder_outputs is None  )
+
     # Decode step-by-step by picking the maximum probability word
     # at each time step.
     predictions = []
@@ -30,7 +32,10 @@ def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_output
     is_complete = torch.zeros_like(prev_y).unsqueeze(-1).byte()
     for t in range(max_len):
         prev_y = tgt_embed_fn(prev_y)
-        pre_output, hidden, _ = decoder.step(prev_y, hidden, seq_mask_x, encoder_outputs,z)
+        if lm_decoding:
+            hidden, pre_output = decoder.step(prev_y, hidden,z)
+        else:
+            pre_output, hidden, _ = decoder.step(prev_y, hidden, seq_mask_x, encoder_outputs,z)
         logits = generator_fn(pre_output)
         py_x = Categorical(logits=logits)
         if greedy:
@@ -46,7 +51,9 @@ def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_output
     return {'sample': torch.cat(predictions, dim=1), 'log_probs': torch.cat(log_probs, dim=1)}
 
 def greedy_decode(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,z=None):
+                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,z=None, force_first_token=None):
+    if force_first_token is not None:
+        raise NotImplementedError
     decoder.eval()
     with torch.no_grad():
         d = ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
@@ -55,7 +62,9 @@ def greedy_decode(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
     return d['sample']
 
 def sampling_decode(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,
-                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,z=None):
+                  encoder_final, seq_mask_x, sos_idx, eos_idx, pad_idx, max_len,z=None, force_first_token=None):
+    if force_first_token is not None:
+        raise NotImplementedError
     decoder.eval()
     with torch.no_grad():
         d = ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_outputs,

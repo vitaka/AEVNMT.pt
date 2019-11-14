@@ -77,27 +77,42 @@ class TextDataset(Dataset):
 
 class InputTextDataset(Dataset):
 
-    def __init__(self, generator, max_length=-1, split=False):
+    def __init__(self, generator, max_length=-1, split=False, aux_data_generator=None):
         self.data = []
         self.parts = []
-        for line in generator:
+        self.aux_data=[]
+
+        iterator=generator
+        if aux_data_generator is not None:
+            iterator=zip(generator,aux_data_generator)
+
+        for input in iterator:
+            aux_data_item={}
+            if aux_data_generator is not None:
+                line=input[0]
+                aux_data_item=input[1]
+            else:
+                line=input
             line = line.strip()  # strip \n
             tokens = line.split()
             if max_length < 0 or len(tokens) <= max_length:
                 self.parts.append([len(self.data)])
                 self.data.append(line)
+                self.aux_data.append(aux_data_item)
             elif split:  # sentence splitting (saves metadata to restore line-alignment with input)
                 parts = []
                 for snt in split_list(tokens, max_length):
                     parts.append(len(self.data))
                     self.data.append(' '.join(snt))
+                    self.aux_data.append(aux_data_item)
                 self.parts.append(parts)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        #return (self.data[idx],self.aux_data[idx])
+        return {"sentence":self.data[idx], **self.aux_data[idx]}
 
     def parts(self, idx):
         return self.parts[idx]
@@ -153,14 +168,14 @@ class RawInputTextDataset(Dataset):
         return result
 
 def postprocess(outputs, truecaser=None, tokenizer=None):
-    if truecaser: 
+    if truecaser:
         tr = sacremoses.MosesDetruecaser()
         output = [tr.detruecase(hyp, return_str=True) for hyp in outputs]
     if tokenizer:
         tk = sacremoses.MosesDetokenizer(tokenizer)
         outputs = [tk.detokenize(hyp.split(), return_str=True) for hyp in outputs]
     return outputs
-        
+
 
 def basic_tokenize_parallel(files: list, max_length=-1):
     """

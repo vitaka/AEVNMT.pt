@@ -37,7 +37,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
                   num_layers=hparams.num_dec_layers,
                   cell_type=hparams.cell_type,
                   tied_embeddings=hparams.tied_embeddings,
-                  feed_z_size=hparams.latent_size if hparams.feed_z else 0)
+                  feed_z_size=hparams.latent_size if hparams.feed_z else 0,gate_z=hparams.gate_z)
     encoder = create_encoder(hparams)
     attention = create_attention(hparams)
     decoder = create_decoder(attention, hparams)
@@ -157,6 +157,104 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl}
 
 
+def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None, use_reverse_lm=False, force_first_token=None):
+    model.eval()
+    with torch.no_grad():
+        if force_first_token is not None:
+            force_first_token=vocab_src[force_first_token]
+        x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
+        if input_sentences_y is not None:
+            y_in, _, seq_mask_y, seq_len_y = create_batch(input_sentences_y, vocab_tgt, device)
+
+        if z is None:
+            if use_prior:
+                qz=model.prior().expand((x_in.size(0),))
+            else:
+                if input_sentences_y is not None:
+                    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
+                else:
+                    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,None,None,None)
+            z = qz.mean if deterministic else qz.sample()
+        else:
+            z=z.to(x_in.device)
+
+
+        if not use_reverse_lm:
+            language_model= model.language_model
+        else:
+            language_model= model.language_model_rev
+        embed= model.src_embed
+        vocab= vocab_src
+
+
+        #if hparams.generate_homotopies:
+        if False:
+            NUM_STEPS=5
+            z2=qz.sample()
+            step=(z2-z)/NUM_STEPS
+
+            z_list=[]
+            for i in range(NUM_STEPS):
+                z_list.append(z+i*step)
+            z_list.append(z2)
+
+            raw_hypothesis_l=[]
+            for my_z in z_list:
+
+                hidden = model.init_lm(my_z)
+
+                if hparams.sample_decoding:
+                    raw_hypothesis_step = sampling_decode(language_model, embed,
+                                                   model.lm_generate, hidden,
+                                                   None, None,
+                                                   seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, my_z if hparams.feed_z else None, force_first_token=force_first_token)
+                elif hparams.beam_width <= 1:
+                    raw_hypothesis_step = greedy_decode(language_model, embed,
+                                                   model.lm_generate, hidden,
+                                                   None, None,
+                                                   seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,my_z if hparams.feed_z else None, force_first_token=force_first_token)
+                else:
+                    raw_hypothesis_step = beam_search(language_model, embed, model.lm_generate,
+                                                 vocab.size(), hidden, None,
+                                                 None, seq_mask_x,
+                                                 vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                                 vocab[PAD_TOKEN], hparams.beam_width,
+                                                 hparams.length_penalty_factor,
+                                                 hparams.max_decoding_length,hparams.n_best,my_z if hparams.feed_z else None, force_first_token=force_first_token)
+                raw_hypothesis_l.append(raw_hypothesis_step)
+
+            raw_hypothesis=torch.cat(raw_hypothesis_l,dim=1)
+
+
+        else:
+            hidden = model.init_lm(z)
+
+            if hparams.sample_decoding:
+                raw_hypothesis = sampling_decode(language_model, embed,
+                                               model.lm_generate, hidden,
+                                               None, None,
+                                               seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                               vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None, force_first_token=force_first_token)
+            elif hparams.beam_width <= 1:
+                raw_hypothesis = greedy_decode(language_model, embed,
+                                               model.lm_generate, hidden,
+                                               None, None,
+                                               seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                               vocab[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None, force_first_token=force_first_token)
+            else:
+                raw_hypothesis = beam_search(language_model, embed, model.lm_generate,
+                                             vocab.size(), hidden, None,
+                                             None, seq_mask_x,
+                                             vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                             vocab[PAD_TOKEN], hparams.beam_width,
+                                             hparams.length_penalty_factor,
+                                             hparams.max_decoding_length,hparams.n_best,z if hparams.feed_z else None, force_first_token=force_first_token)
+
+    hypothesis = batch_to_sentences(raw_hypothesis, vocab)
+    return hypothesis,z
+
 def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True):
     model.eval()
     with torch.no_grad():
@@ -195,7 +293,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
                                          z if hparams.feed_z else None)
 
     hypothesis = batch_to_sentences(raw_hypothesis, vocab_tgt)
-    return hypothesis
+    return hypothesis,z
 
 def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams):
     model.eval()

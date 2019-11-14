@@ -79,6 +79,7 @@ options = {
                                             " projection.", 1),
     "max_pooling_states":(bool, False, False, "Max-pool encoder states in the inference network instead of averaging them", 1),
     "feed_z":(bool, False, False, "Concatenate z to the previous word embeddings at each timestep", 1),
+    "gate_z":(bool, False, False, "Modfify z with a gating mechanism", 1),
 
     "bow_loss":(bool, False, False, "Add SL bag-of-words term to the loss", 1),
     "bow_loss_tl":(bool, False, False, "Add TL bag-of-words term to the loss", 1),
@@ -109,6 +110,8 @@ options = {
     "length_penalty_factor": (float, 1.0, False, "Length penalty factor (alpha) for"
                                                  " beam search decoding.", 3),
     "sample_decoding": (bool, False, False, "When decoding, sample instead of searching for the translation with maximum probability.", 3),
+    "re_generate_sl": (bool, False, False, "When decoding, use SL LM instead of translation model.", 3),
+    "sample_prior_decoding": (int, 0, False, "When translating/generating SL with AEVNMT, sample this number of sentences from the prior and ignore the posterior.", 3),
 
     # Optimization hyperparameters
     "gen_optimizer": (str, "adam", False, "Optimizer for generative parameters (options: adam, amsgrad, adadelta, sgd)", 4),
@@ -156,6 +159,9 @@ options = {
     "translation_input_file": (str, None, False, "The translation input file,"
                                                " ignored for training.", 5),
     "translation_output_file": (str, None, False, "The translation output file,"
+                                                " ignored for training.", 5),
+    "z_input_file": (str, None, False, "The z input file, inference network is not used is this is set.", 5),
+    "z_output_file": (str, None, False, "The z output file,"
                                                 " ignored for training.", 5),
     "translation_ref_file": (str, None, False, "The translation references file", 5),
     "verbose": (bool, False, False, "Print logging information", 5),

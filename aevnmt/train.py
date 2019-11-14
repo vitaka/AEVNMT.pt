@@ -26,15 +26,17 @@ def create_model(hparams, vocab_src, vocab_tgt):
         train_fn = nmt_helper.train_step
         validate_fn = nmt_helper.validate
         translate_fn = nmt_helper.translate
+        sample_fn=None
     elif hparams.model_type == "aevnmt":
         model = aevnmt_helper.create_model(hparams, vocab_src, vocab_tgt)
         train_fn = aevnmt_helper.train_step
         validate_fn = aevnmt_helper.validate
         translate_fn = aevnmt_helper.translate
+        sample_fn = aevnmt_helper.re_sample
     else:
         raise Exception(f"Unknown model_type: {hparams.model_type}")
 
-    return model, train_fn, validate_fn, translate_fn
+    return model, train_fn, validate_fn, translate_fn, sample_fn
 
 
 def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
@@ -105,7 +107,7 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
                 word_dropout=hparams.word_dropout)
             loss = train_step(
                     model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
-                    y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, hparams, 
+                    y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, hparams,
                     step, summary_writer=summary_writer)["loss"]
 
             # Backpropagate and update gradients.
@@ -194,7 +196,7 @@ def main():
     print(f"Validation data: {len(val_data):,} bilingual sentence pairs")
 
     # Create the language model and load it onto the GPU if set to do so.
-    model, train_fn, validate_fn, _ = create_model(hparams, vocab_src, vocab_tgt)
+    model, train_fn, validate_fn, _,_ = create_model(hparams, vocab_src, vocab_tgt)
     optimizers, lr_schedulers = construct_optimizers(
         hparams,
         gen_parameters=model.generative_parameters(),
