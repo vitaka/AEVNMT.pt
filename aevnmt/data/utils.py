@@ -6,7 +6,7 @@ import sys
 from .constants import UNK_TOKEN, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
 
 
-def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=True):
+def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=True, shuffle_toks=True):
     """
     Converts a list of sentences to a padded batch of word ids. Returns
     an input batch, an output batch shifted by one, a sequence mask over
@@ -18,6 +18,10 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
     :param word_dropout: rate at which we omit words from the context (input)
     :returns: a batch of padded inputs, a batch of padded outputs, mask, lengths
     """
+
+    #TODO: shuffle while keeping BPE fragments togeher?
+    if shuffle_toks:
+        sentences=[  " ".join(np.random.permutation(s.split(" "))) for s in sentences  ]
 
     # sentences is a list of np arrays with int64 in it
     if map_to_ids:
@@ -62,9 +66,9 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
     return batch_input, batch_output, seq_mask, seq_length, batch_noisy_input
 
 
-def create_batch(sentences, vocab, device, map_to_ids=True):
+def create_batch(sentences, vocab, device, map_to_ids=True, shuffle_toks=True):
     batch_input, batch_output, seq_mask, seq_length, _ = create_noisy_batch(
-        sentences, vocab, device, word_dropout=0., map_to_ids=map_to_ids)
+        sentences, vocab, device, word_dropout=0., map_to_ids=map_to_ids,shuffle_toks=shuffle_toks)
     return batch_input, batch_output, seq_mask, seq_length
 
 

@@ -95,7 +95,8 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
     while (epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience):
 
         # Train for 1 epoch.
-        for sentences_x, sentences_y in bucketing_dl:
+        for sentences_tuple in bucketing_dl:
+            sentences_x, sentences_y =sentences_tuple
             model.train()
 
             # Perform a forward pass through the model
@@ -105,9 +106,23 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in = create_noisy_batch(
                 sentences_y, vocab_tgt, device,
                 word_dropout=hparams.word_dropout)
+
+            if hparams.shuffle_lm:
+                x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in = create_noisy_batch(
+                    sentences_x, vocab_src, device,
+                    word_dropout=hparams.word_dropout, shuffle_toks=True)
+                y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in = create_noisy_batch(
+                    sentences_y, vocab_tgt, device,
+                    word_dropout=hparams.word_dropout, shuffle_toks=True)
+            else:
+                x_shuf_in= x_shuf_out= seq_mask_x_shuf= seq_len_x_shuf= noisy_x_shuf_in =None
+                y_shuf_in= y_shuf_out= seq_mask_y_shuf= seq_len_y_shuf= noisy_y_shuf_in=None
+
             loss = train_step(
                     model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
-                    y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in, hparams,
+                    y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
+                    x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in,
+                    hparams,
                     step, summary_writer=summary_writer)["loss"]
 
             # Backpropagate and update gradients.

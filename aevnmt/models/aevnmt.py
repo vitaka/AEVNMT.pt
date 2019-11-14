@@ -23,7 +23,8 @@ class AEVNMT(nn.Module):
 
     def __init__(self, tgt_vocab_size, emb_size, latent_size, encoder, decoder, language_model,
             pad_idx, dropout, tied_embeddings, prior_family: str, prior_params: list, posterior_family: str,
-            inf_encoder_style: str, inf_conditioning: str,feed_z=False,max_pool=False, bow=False, bow_tl=False,MADE=False):
+            inf_encoder_style: str, inf_conditioning: str,feed_z=False,max_pool=False, bow=False, bow_tl=False,MADE=False,
+            language_model_shuf=None):
         super().__init__()
         self.feed_z=feed_z
         self.latent_size = latent_size
@@ -31,6 +32,7 @@ class AEVNMT(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
         self.language_model = language_model
+        self.language_model_shuf=language_model_shuf
         self.tgt_embedder = nn.Embedding(tgt_vocab_size, emb_size, padding_idx=pad_idx)
         self.tied_embeddings = tied_embeddings
         if not tied_embeddings:
@@ -42,7 +44,11 @@ class AEVNMT(nn.Module):
                                                 nn.Tanh())
         self.lm_init_layer = nn.Sequential(nn.Linear(latent_size, language_model.hidden_size),
                                            nn.Tanh())
-
+        if self.language_model_shuf is not None:
+            self.lm_init_layer_shuf = nn.Sequential(nn.Linear(latent_size, language_model_shuf.hidden_size),
+                                           nn.Tanh())
+        else:
+            self.lm_init_layer_shuf =None
         self.inf_network = InferenceNetwork(
             family=posterior_family,
             latent_size=latent_size,
@@ -160,7 +166,11 @@ class AEVNMT(nn.Module):
         if self.MADE is not None:
             made_parameters=self.MADE.parameters()
 
-        return chain( bow_params  , bow_params_tl  , made_parameters  )
+        lm_shuf_parameters=iter(())
+        if self.language_model_shuf is not None:
+            lm_shuf_parameters=chain(self.language_model_shuf.parameters(),self.lm_init_layer_shuf.parameters())
+
+        return chain( bow_params  , bow_params_tl  , made_parameters ,lm_shuf_parameters  )
 
     def lm_parameters(self):
         return chain(self.language_model.parameters(), self.lm_init_layer.parameters())
@@ -223,17 +233,25 @@ class AEVNMT(nn.Module):
         W = self.tgt_embedder.weight if self.tied_embeddings else self.output_matrix
         return F.linear(pre_output, W)
 
-    def run_language_model(self, x, z):
+    def run_language_model(self, x, z, shuffled=False):
         """
         Runs the language_model.
 
         :param x: unembedded source sentence
         :param z: a sample of the latent variable
         """
-        hidden = tile_rnn_hidden(self.lm_init_layer(z), self.language_model.rnn)
-        return self.language_model(x, hidden=hidden,z=z if self.feed_z else None)
 
-    def forward(self, x, seq_mask_x, seq_len_x, y, z):
+        lm=self.language_model
+        init=self.lm_init_layer
+
+        if shuffled:
+            lm=self.language_model_shuf
+            init=self.lm_init_layer_shuf
+
+        hidden=tile_rnn_hidden(init(z), lm.rnn)
+        return lm(x, hidden=hidden, z=z if self.feed_z else None)
+
+    def forward(self, x, seq_mask_x, seq_len_x, y, x_shuf,z):
 
         # Encode the source sentence and initialize the decoder hidden state.
         encoder_outputs, encoder_final = self.encode(x, seq_len_x, z)
@@ -242,6 +260,10 @@ class AEVNMT(nn.Module):
         # Estimate the Categorical parameters for E[P(x|z)] using the given sample of the latent
         # variable.
         lm_logits = self.run_language_model(x, z)
+
+        lm_shuf_logits=None
+        if self.language_model_shuf is not None and not disable_x:
+            lm_shuf_logits=self.run_language_model(x_shuf,z,shuffled=True)
 
         if self.bow_output_layer is not None:
             bow_logits=self.bow_output_layer(z)
@@ -278,7 +300,7 @@ class AEVNMT(nn.Module):
             tm_logits.append(logits)
             all_att_weights.append(att_weights)
 
-        return torch.cat(tm_logits, dim=1), lm_logits, torch.cat(all_att_weights, dim=1),bow_logits,bow_logits_tl,MADE_logits
+        return torch.cat(tm_logits, dim=1), lm_logits, torch.cat(all_att_weights, dim=1),bow_logits,bow_logits_tl,MADE_logits,lm_shuf_logits
 
     def compute_conditionals(self, x_in, seq_mask_x, seq_len_x, x_out, y_in, y_out, z):
         """
@@ -387,8 +409,8 @@ class AEVNMT(nn.Module):
 
         return -tm_loss
 
-    def loss(self, tm_logits, lm_logits, targets_y, targets_x, qz, free_nats=0.,
-             KL_weight=1., reduction="mean", bow_logits=None, bow_logits_tl=None, MADE_logits=None):
+    def loss(self, tm_logits, lm_logits, targets_y, targets_x,targets_x_shuf, qz, free_nats=0.,
+             KL_weight=1., reduction="mean", bow_logits=None, bow_logits_tl=None, MADE_logits=None,lm_shuf_logits=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -413,6 +435,10 @@ class AEVNMT(nn.Module):
 
         # Compute the language model categorical loss.
         lm_loss = self.language_model.loss(lm_logits, targets_x, reduction="none")
+
+        lm_shuf_loss=0.0
+        if lm_shuf_logits is not None:
+            lm_shuf_loss=self.language_model_shuf.loss(lm_shuf_logits,targets_x_shuf,reduction="none")
 
         bow_loss=torch.zeros_like(lm_loss)
         if bow_logits is not None:
@@ -452,7 +478,7 @@ class AEVNMT(nn.Module):
         tm_log_likelihood = -tm_loss
         lm_log_likelihood = -lm_loss
 
-        bow_log_likelihood = - bow_loss - bow_loss_tl - MADE_loss
+        side_log_likelihood = - bow_loss - bow_loss_tl - MADE_loss -lm_shuf_loss
 
 
         # TODO: N this is [...,D], whereas with MoG this is [...]
@@ -465,13 +491,13 @@ class AEVNMT(nn.Module):
         if free_nats > 0:
             KL = torch.clamp(KL, min=free_nats)
         KL *= KL_weight
-        elbo = tm_log_likelihood + lm_log_likelihood + bow_log_likelihood - KL
+        elbo = tm_log_likelihood + lm_log_likelihood + side_log_likelihood - KL
         loss = -elbo
 
         out_dict = {
             'tm_log_likelihood': tm_log_likelihood,
             'lm_log_likelihood': lm_log_likelihood,
-            'bow_log_likelihood': bow_log_likelihood,
+            'side_log_likelihood': side_log_likelihood,
             'KL': KL,
             'raw_KL': raw_KL
         }
