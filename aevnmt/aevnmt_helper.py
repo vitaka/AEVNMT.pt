@@ -120,7 +120,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
                         shuffle=False, num_workers=4)
     val_dl = BucketingParallelDataLoader(val_dl)
 
-    val_ppl, val_NLL, val_KL, val_NLL_bow, val_NLL_bow_tl, val_NLL_MADE, val_NLL_shuf_lm = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
+    val_ppl, val_NLL, val_KL, val_NLL_bow, val_NLL_bow_tl, val_NLL_MADE, val_NLL_shuf_lm = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device,hparams)
     val_bleu, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
                                                   device, hparams)
 
@@ -327,7 +327,7 @@ def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams):
     bleu = compute_bleu(model_hypotheses, references, subword_token=hparams.subword_token)
     return bleu, inputs, references, model_hypotheses
 
-def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
+def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device,hparams):
     model.eval()
     with torch.no_grad():
         num_predictions = 0
@@ -346,8 +346,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
             y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
 
             if model.language_model_shuf is not None:
-                x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf = create_batch(sentences_x, vocab_src, device, shuffle_toks=True)
-                y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf = create_batch(sentences_y, vocab_tgt, device, shuffle_toks=True)
+                x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf = create_batch(sentences_x, vocab_src, device, shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf = create_batch(sentences_y, vocab_tgt, device, shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
             else:
                 x_shuf_in= x_shuf_out= seq_mask_x_shuf= seq_len_x_shuf=None
                 y_shuf_in= y_shuf_out= seq_mask_y_shuf= seq_len_y_shuf=None

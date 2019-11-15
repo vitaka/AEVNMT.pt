@@ -110,10 +110,10 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             if hparams.shuffle_lm:
                 x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in = create_noisy_batch(
                     sentences_x, vocab_src, device,
-                    word_dropout=hparams.word_dropout, shuffle_toks=True)
+                    word_dropout=hparams.word_dropout, shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
                 y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in = create_noisy_batch(
                     sentences_y, vocab_tgt, device,
-                    word_dropout=hparams.word_dropout, shuffle_toks=True)
+                    word_dropout=hparams.word_dropout, shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
             else:
                 x_shuf_in= x_shuf_out= seq_mask_x_shuf= seq_len_x_shuf= noisy_x_shuf_in =None
                 y_shuf_in= y_shuf_out= seq_mask_y_shuf= seq_len_y_shuf= noisy_y_shuf_in=None
