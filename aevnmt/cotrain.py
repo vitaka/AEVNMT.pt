@@ -28,6 +28,8 @@ from collections import defaultdict, deque
 import numpy as np
 
 
+from aevnmt.dist import get_named_params
+
 def count_number_of_batches(iterator):
     n = 0
     for _ in iterator:
@@ -263,75 +265,7 @@ def aevnmt_monolingual_step(model, vocab_src,
     x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
         hypothesis, vocab_src, device, word_dropout=0.)
 
-    aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x, y_in, y_out, seq_mask_y, seq_len_y,step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="monolingual/y", synthetic_x=True):
-
-
-
-def bilingual_loss(
-        model, q_z,
-        x_in, x_out, seq_mask_x, seq_len_x,
-        y_in, y_out, seq_mask_y, seq_len_y,
-        hparams, step,
-        KL_weight, tracker,
-        writer=None, title="bilingual":
-    """Returns the loss for a given model on bilingual data"""
-
-    # Compute the translation and language model logits.
-    z = q_z.rsample()
-    tm_logits, lm_logits, _ = model(x_in, seq_mask_x, seq_len_x, y_in, z)
-
-    if writer:
-        writer.add_histogram(f"{title}/z", z, step)
-
-    # Compute the loss.
-    loss_terms = model.loss(
-        tm_logits, lm_logits, y_out, x_out, q_z,
-        free_nats=hparams.KL_free_nats,
-        KL_weight=KL_weight,
-        reduction="mean")
-    loss = loss_terms['loss']
-
-    # These are for logging, thus we use raw KL
-    ELBO = loss_terms['lm_log_likelihood'] + loss_terms['tm_log_likelihood'] - loss_terms['raw_KL']
-    ELBO = ELBO.mean()
-    KL = loss_terms['raw_KL'].mean()
-
-    if writer:
-        writer.add_scalar(f'{title}/loss', loss, step)
-        # xy terms
-        writer.add_scalar(f'{title}/ELBO', ELBO, step)
-        writer.add_scalar(f'{title}/LM', loss_terms['lm_log_likelihood'].mean(), step)
-        writer.add_scalar(f'{title}/TM', loss_terms['tm_log_likelihood'].mean(), step)
-        writer.add_scalar(f'{title}/KL', KL, step)
-
-    # Update statistics.
-    tracker.update('ELBO', ELBO.item() * x_in.size(0))
-    tracker.update('num_tokens', (seq_len_x.sum() + seq_len_y.sum()).item())
-    tracker.update('num_sentences', x_in.size(0))
-
-    return loss
-
-
-def bilingual_step(
-        model, q_z, hparams,
-        x_in, x_out, seq_mask_x, seq_len_x,
-        y_in, y_out, seq_mask_y, seq_len_y,
-        step, optimizers, KL_weight, regularizer,
-        tracker, writer=None, title="bilingual"):
-    """Take a step towards minimising the loss"""
-
-    loss = bilingual_loss(
-        model=model, q_z=q_z,
-        x_in=x_in, x_out=x_out, seq_mask_x=seq_mask_x, seq_len_x=seq_len_x,
-        y_in=y_in, y_out=y_out, seq_mask_y=seq_mask_y, seq_len_y=seq_len_y,
-        step=step, KL_weight=KL_weight,
-        tracker=tracker, writer=writer,
-        hparams=hparams, title=title
-    )
-    loss = loss + regularizer
-    loss.backward()
-    take_optimizer_step(optimizers['gen'], model.generative_parameters(), hparams.max_gradient_norm)
-    take_optimizer_step(optimizers['inf_z'], model.inference_parameters(), hparams.max_gradient_norm)
+    aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x, y_in, y_out, seq_mask_y, seq_len_y,step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="monolingual/y", synthetic_x=True)
 
 
 
@@ -440,16 +374,14 @@ def train(model,
                     y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in = create_noisy_batch(
                         sentences_y, vocab_tgt, device, word_dropout=0.)  # TODO: should we use word dropout?
                     aevnmt_monolingual_step(
-                        model_xy, model_y, vocab_src,
+                        model, vocab_src,
                         y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
                         hparams,
                         step=step_counter.step(),
                         device=device,
-                        optimizers_xy=optimizers_xy,
-                        optimizers_yx=optimizers_yx,  # for mono VAE loss
+                        optimizers=optimizers,
                         KL_weight=KL_weight,
                         tracker=tracker_y,
-                        reward_stats=r_stats_y,
                         gather_examples=backtranslated_examples if (step_counter.step(
                             'y') + 1) % hparams.print_every == 0 else None,
                         writer=summary_writer if step_counter.step('y') % hparams.print_every == 0 else None,
