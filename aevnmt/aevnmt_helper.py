@@ -75,7 +75,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
                x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in,
-               hparams, step, summary_writer=None):
+               hparams, step, summary_writer=None,synthetic_x=False):
 
     # Use q(z|x) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
@@ -90,13 +90,17 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     else:
         KL_weight = 1.
 
+    #TODO: only TL side losses if x is synthetic
+    if synthetic_x:
+        lm_logits=None
+
     # Compute the loss.
     loss = model.loss(tm_logits, lm_logits, y_out, x_out, x_shuf_out,qz,
                       free_nats=hparams.KL_free_nats,
                       KL_weight=KL_weight,
                       reduction="mean",
                       bow_logits=bow_logits,
-                      bow_logits_tl=bow_logits_tl,MADE_logits=MADE_logits,lm_shuf_logits=lm_shuf_logits)
+                      bow_logits_tl=bow_logits_tl,MADE_logits=MADE_logits,lm_shuf_logits=lm_shuf_logits,synthetic_x=synthetic_x)
 
     if summary_writer:
         summary_writer.add_histogram("posterior/z", z, step)

@@ -23,8 +23,8 @@ class AEVNMT(nn.Module):
 
     def __init__(self, tgt_vocab_size, emb_size, latent_size, encoder, decoder, language_model,
             pad_idx, dropout, tied_embeddings, prior_family: str, prior_params: list, posterior_family: str,
-            inf_encoder_style: str, inf_conditioning: str,feed_z=False,max_pool=False, bow=False, bow_tl=False,MADE=False,
-            language_model_shuf=None):
+            inf_encoder_style: str, inf_conditioning: str,feed_z=False,max_pool=False, bow=False, bow_tl=False,MADE=False,MADE_tl=False,
+            language_model_shuf=None, language_model_shuf_tl=None):
         super().__init__()
         self.feed_z=feed_z
         self.latent_size = latent_size
@@ -33,6 +33,7 @@ class AEVNMT(nn.Module):
         self.decoder = decoder
         self.language_model = language_model
         self.language_model_shuf=language_model_shuf
+        self.language_model_shuf_tl=language_model_shuf_tl
         self.tgt_embedder = nn.Embedding(tgt_vocab_size, emb_size, padding_idx=pad_idx)
         self.tied_embeddings = tied_embeddings
         if not tied_embeddings:
@@ -46,9 +47,14 @@ class AEVNMT(nn.Module):
                                            nn.Tanh())
         if self.language_model_shuf is not None:
             self.lm_init_layer_shuf = nn.Sequential(nn.Linear(latent_size, language_model_shuf.hidden_size),
-                                           nn.Tanh())
+                                   nn.Tanh())
         else:
             self.lm_init_layer_shuf =None
+        if self.language_model_shuf_tl is not None:
+            self.lm_init_layer_shuf_tl = nn.Sequential(nn.Linear(latent_size, language_model_shuf_tl.hidden_size),
+                                   nn.Tanh())
+        else:
+            self.lm_init_layer_shuf_tl =None
         self.inf_network = InferenceNetwork(
             family=posterior_family,
             latent_size=latent_size,
@@ -94,6 +100,21 @@ class AEVNMT(nn.Module):
                 event_size=self.language_model.embedder.num_embeddings,  # size of observation
                 dist_type=Bernoulli,
                 conditioner=made
+                )
+
+        self.MADE_tl=None
+        if MADE_tl:
+            MADE_tl = MADEConditioner(
+                input_size= self.language_model.embedder.num_embeddings + self.latent_size,  # our only input to the MADE layer is the observation
+                output_size= self.language_model.embedder.num_embeddings,  # number of parameters to predict
+                context_size=self.latent_size,
+                hidden_sizes=[decoder.hidden_size, decoder.hidden_size], # TODO: is this OK?
+                num_masks=10 #TODO: is that OK?
+            )
+            self.MADE_tl = AutoregressiveLikelihood(
+                event_size=self.language_model.embedder.num_embeddings,  # size of observation
+                dist_type=Bernoulli,
+                conditioner=made_tl
                 )
 
         # This is done because the location and scale of the prior distribution are not considered
@@ -152,6 +173,7 @@ class AEVNMT(nn.Module):
 
     def side_losses_parameters(self):
         made_parameters=iter(())
+        made_parameters_tl=iter(())
 
         if self.bow_output_layer is None:
             bow_params=iter(())
@@ -165,12 +187,18 @@ class AEVNMT(nn.Module):
 
         if self.MADE is not None:
             made_parameters=self.MADE.parameters()
+        if self.MADE_tl is not None:
+            made_parameters_tl=self.MADE_tl.parameters()
 
         lm_shuf_parameters=iter(())
         if self.language_model_shuf is not None:
             lm_shuf_parameters=chain(self.language_model_shuf.parameters(),self.lm_init_layer_shuf.parameters())
 
-        return chain( bow_params  , bow_params_tl  , made_parameters ,lm_shuf_parameters  )
+        lm_shuf_parameters_tl=iter(())
+        if self.language_model_shuf_tl is not None:
+            lm_shuf_parameters_tl=chain(self.language_model_shuf_tl.parameters(),self.lm_init_layer_shuf_tl.parameters())
+
+        return chain( bow_params  , bow_params_tl  , made_parameters, made_parameters_tl ,lm_shuf_parameters, lm_shuf_parameters_tl  )
 
     def lm_parameters(self):
         return chain(self.language_model.parameters(), self.lm_init_layer.parameters())
@@ -434,7 +462,9 @@ class AEVNMT(nn.Module):
         tm_loss = tm_loss.sum(dim=1)
 
         # Compute the language model categorical loss.
-        lm_loss = self.language_model.loss(lm_logits, targets_x, reduction="none")
+        lm_loss=0.0
+        if lm_logits is not None:
+            lm_loss = self.language_model.loss(lm_logits, targets_x, reduction="none")
 
         lm_shuf_loss=0.0
         if lm_shuf_logits is not None:
