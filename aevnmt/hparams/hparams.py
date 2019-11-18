@@ -188,6 +188,9 @@ options = {
     "postprocess_ref": (bool, False, False, "Applies post-processing steps to reference (if provided)", 5),
 
     "draw_translations": (int, 0, False, "Greedy decode a number of posterior samples", 5),
+
+    "curriculum": (str, "xy", False, "x (source monolingual), y (target monolingual), xy|yx (bilingual), bwd|fwd (synthetic bilingual)", 6),
+    "warmup": (int, 1, False, "Focus on supervised objectives for a number of epochs", 6),
 }
 
 class Hyperparameters:

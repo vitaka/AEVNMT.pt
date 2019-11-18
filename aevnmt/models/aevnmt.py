@@ -5,7 +5,7 @@ from itertools import chain
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Distribution, Independent, Categorical 
+from torch.distributions import Distribution, Independent, Categorical
 
 from aevnmt.dist import get_named_params
 
@@ -17,10 +17,10 @@ from probabll.distributions import MixtureOfGaussians
 
 class AEVNMT(nn.Module):
 
-    def __init__(self, latent_size, src_embedder, tgt_embedder, 
+    def __init__(self, latent_size, src_embedder, tgt_embedder,
             language_model: GenerativeLM, translation_model: GenerativeTM, inference_model: InferenceModel,
-            dropout, tied_embeddings, prior_family: str, prior_params: list, 
-            feed_z=False,  
+            dropout, tied_embeddings, prior_family: str, prior_params: list,
+            feed_z=False,
             aux_lms: Dict[str, GenerativeLM]=dict(), aux_tms: Dict[str, GenerativeTM]=dict(),
             mixture_likelihood=False, mixture_likelihood_dir_prior=0.0):
         super().__init__()
@@ -36,6 +36,21 @@ class AEVNMT(nn.Module):
         # Auxiliary LMs and TMs
         self.aux_lms = nn.ModuleDict(aux_lms)
         self.aux_tms = nn.ModuleDict(aux_tms)
+
+        self.MADE_tl=None
+        if MADE_tl:
+            MADE_tl = MADEConditioner(
+                input_size= self.language_model.embedder.num_embeddings + self.latent_size,  # our only input to the MADE layer is the observation
+                output_size= self.language_model.embedder.num_embeddings,  # number of parameters to predict
+                context_size=self.latent_size,
+                hidden_sizes=[decoder.hidden_size, decoder.hidden_size], # TODO: is this OK?
+                num_masks=10 #TODO: is that OK?
+            )
+            self.MADE_tl = AutoregressiveLikelihood(
+                event_size=self.language_model.embedder.num_embeddings,  # size of observation
+                dist_type=Bernoulli,
+                conditioner=made_tl
+                )
 
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
@@ -93,12 +108,12 @@ class AEVNMT(nn.Module):
 
     def aux_lm_parameters(self):
         return chain(*[model.parameters() for model in self.aux_lms.values()])
-    
+
     def aux_tm_parameters(self):
         return chain(*[model.parameters() for model in self.aux_tms.values()])
 
     def lm_parameters(self):
-        return chain(self.src_embedder.parameters(), self.language_model.parameters())  
+        return chain(self.src_embedder.parameters(), self.language_model.parameters())
 
     def tm_parameters(self):
         return chain(self.tgt_embedder.parameters(), self.translation_model.parameters())
@@ -161,12 +176,12 @@ class AEVNMT(nn.Module):
     def log_likelihood_tm(self, comp_name, likelihood: Distribution, y):
         # TODO: give special treatment to components that take shuffled inputs, e.g. if aux_decoder.shuffled_inputs: aux_lm_likelihoods[aux_name] = aux_decoder(x_shuff, z)
         return self.aux_tms[comp_name].log_prob(likelihood, y)
-    
+
     def log_likelihood_lm(self, comp_name, likelihood: Distribution, x):
         # TODO: give special treatment to components that take shuffled inputs, e.g. if aux_decoder.shuffled_inputs: aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y_shuff, z)
         return self.aux_lms[comp_name].log_prob(likelihood, x)
 
-    def loss(self, tm_likelihood: Categorical, lm_likelihood: Categorical, targets_y, targets_x, qz: Distribution, 
+    def loss(self, tm_likelihood: Categorical, lm_likelihood: Categorical, targets_y, targets_x, qz: Distribution,
             free_nats=0., KL_weight=1., reduction="mean", aux_lm_likelihoods=dict(), aux_tm_likelihoods=dict()):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
@@ -206,25 +221,25 @@ class AEVNMT(nn.Module):
         out_dict = dict()
         out_dict['KL'] = KL
         out_dict['raw_KL'] = raw_KL
-       
+
         # Alternative views of p(x|z)
         # [Cx, B]
         side_lm_likelihood = torch.zeros([len(aux_lm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
         for c, (aux_name, aux_likelihood) in enumerate(aux_lm_likelihoods.items()):
             out_dict['lm/' + aux_name] = self.log_likelihood_lm(aux_name, aux_likelihood, targets_x)
-            # TODO: give special treatment to components that take shuffled outputs, e.g. if aux_decoder.shuffled_inputs: self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuff) 
+            # TODO: give special treatment to components that take shuffled outputs, e.g. if aux_decoder.shuffled_inputs: self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuff)
             side_lm_likelihood[c] = out_dict['lm/' + aux_name]
         # Alternative views of p(y|z,x)
         # [Cy, B]
         side_tm_likelihood = torch.zeros([len(aux_tm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
         for c, (aux_name, aux_likelihood) in enumerate(aux_tm_likelihoods.items()):
             out_dict['tm/' + aux_name] = self.log_likelihood_tm(aux_name, aux_likelihood, targets_y)
-            # TODO: give special treatment to components that take shuffled outputs, e.g. if aux_decoder.shuffled_inputs: self.log_likelihood_lm(aux_name, aux_likelihood, targets_y_shuff) 
+            # TODO: give special treatment to components that take shuffled outputs, e.g. if aux_decoder.shuffled_inputs: self.log_likelihood_lm(aux_name, aux_likelihood, targets_y_shuff)
             side_tm_likelihood[c] = out_dict['tm/' + aux_name]
-       
+
         if not self.mixture_likelihood:
             # ELBO
-            #  E_q[ \log P(x|z,c=main) P(y|z,x,c=main)] - KL(q(z) || p(z)) 
+            #  E_q[ \log P(x|z,c=main) P(y|z,x,c=main)] - KL(q(z) || p(z))
             #  + E_q[\sum_{c not main} log P(x|z,c) + log P(y|z,x,c) ]
             # where the second row are heuristic side losses (we can think of it as multitask learning)
             elbo = tm_log_likelihood + lm_log_likelihood - KL
@@ -234,7 +249,7 @@ class AEVNMT(nn.Module):
             # main log-likelihoods
             out_dict['lm/main'] = lm_log_likelihood
             out_dict['tm/main'] = tm_log_likelihood
-        else: 
+        else:
             # ELBO uses mixture models for X|z and Y|z,x:
             #  E_q[ \log P(x|z) + \log P(y|z,x)] - KL(q(z) || p(z))
             #   where \log P(x|z)   = \log \sum_{c=1}^{Cy} w_c P(x|z,c)
@@ -244,7 +259,7 @@ class AEVNMT(nn.Module):
                 wx = torch.full([KL.size(0), Cx], 1. / Cx, dtype=KL.dtype, device=KL.device).permute(1, 0)
             else:
                 wx = torch.distributions.Dirichlet(
-                    torch.full([KL.size(0), Cx], self.mixture_likelihood_dir_prior, 
+                    torch.full([KL.size(0), Cx], self.mixture_likelihood_dir_prior,
                         dtype=KL.dtype, device=KL.device)).sample().permute(1, 0)
             # [Cx, B] -> [B]
             lm_mixture = (torch.cat([lm_log_likelihood.unsqueeze(0), side_lm_likelihood]) - torch.log(wx)).logsumexp(0)
@@ -253,7 +268,7 @@ class AEVNMT(nn.Module):
                 wy = torch.full([KL.size(0), Cy], 1. / Cy, dtype=KL.dtype, device=KL.device).permute(1, 0)
             else:
                 wy = torch.distributions.Dirichlet(
-                    torch.full([KL.size(0), Cy], self.mixture_likelihood_dir_prior, 
+                    torch.full([KL.size(0), Cy], self.mixture_likelihood_dir_prior,
                         dtype=KL.dtype, device=KL.device)).sample().permute(1, 0)
             # [Cy, B] -> [B]
             tm_mixture = (torch.cat([tm_log_likelihood.unsqueeze(0), side_tm_likelihood]) - torch.log(wy)).logsumexp(0)

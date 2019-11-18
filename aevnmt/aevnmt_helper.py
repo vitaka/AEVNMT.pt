@@ -41,26 +41,26 @@ def create_aux_language_models(src_embedder, hparams) -> Dict[str, GenerativeLM]
     lms = dict()
     if hparams.bow_loss:
         lms['bow'] = IndependentLM(
-            latent_size=hparams.latent_size, 
-            vocab_size=src_embedder.num_embeddings, 
+            latent_size=hparams.latent_size,
+            vocab_size=src_embedder.num_embeddings,
             pad_idx=src_embedder.padding_idx)
     if hparams.MADE_loss:
         lms['made'] = CorrelatedBernoullisLM(
-            vocab_size=src_embedder.num_embeddings, 
-            latent_size=hparams.latent_size, 
+            vocab_size=src_embedder.num_embeddings,
+            latent_size=hparams.latent_size,
             hidden_sizes=[hparams.hidden_size, hparams.hidden_size],  # TODO: generalise
-            pad_idx=src_embedder.padding_idx, 
+            pad_idx=src_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
             resample_mask_every=10)  # TODO: generalise
     if hparams.count_MADE_loss:
         lms['count_made'] = CorrelatedPoissonsLM(
-            vocab_size=src_embedder.num_embeddings, 
-            latent_size=hparams.latent_size, 
+            vocab_size=src_embedder.num_embeddings,
+            latent_size=hparams.latent_size,
             hidden_sizes=[hparams.hidden_size, hparams.hidden_size],  # TODO: generalise
-            pad_idx=src_embedder.padding_idx, 
+            pad_idx=src_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
             resample_mask_every=10)  # TODO: generalise
-    if hparams.shuffle_lm:  # TODO: implement shuffling 
+    if hparams.shuffle_lm:  # TODO: implement shuffling
         lms['shuffled'] = CorrelatedCategoricalsLM(
             embedder=src_embedder,
             latent_size=hparams.latent_size,
@@ -84,17 +84,17 @@ def create_aux_translation_models(src_embedder, tgt_embedder, hparams) -> Dict[s
             pad_idx=tgt_embedder.padding_idx)
     if hparams.MADE_loss_tl:
         tms['made'] = CorrelatedBernoullisTM(
-            vocab_size=tgt_embedder.num_embeddings, 
-            latent_size=hparams.latent_size, 
-            hidden_sizes=[hparams.hidden_size, hparams.hidden_size], 
+            vocab_size=tgt_embedder.num_embeddings,
+            latent_size=hparams.latent_size,
+            hidden_sizes=[hparams.hidden_size, hparams.hidden_size],
             pad_idx=tgt_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
             resample_mask_every=10)  # TODO: generalise
     if hparams.count_MADE_loss_tl:
         tms['count_made'] = CorrelatedPoissonsTM(
-            vocab_size=tgt_embedder.num_embeddings, 
-            latent_size=hparams.latent_size, 
-            hidden_sizes=[hparams.hidden_size, hparams.hidden_size], 
+            vocab_size=tgt_embedder.num_embeddings,
+            latent_size=hparams.latent_size,
+            hidden_sizes=[hparams.hidden_size, hparams.hidden_size],
             pad_idx=tgt_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
             resample_mask_every=10)  # TODO: generalise
@@ -133,11 +133,11 @@ def create_inference_model(src_embedder, tgt_embedder, hparams) -> InferenceMode
         rnn_bidirectional=hparams.bidirectional,
         rnn_num_layers=hparams.num_enc_layers,
         rnn_cell_type=hparams.cell_type,
-        transformer_heads=hparams.transformer_heads, 
-        transformer_layers=hparams.num_enc_layers, 
+        transformer_heads=hparams.transformer_heads,
+        transformer_layers=hparams.num_enc_layers,
         nli_shared_size=hparams.emb_size,
-        nli_max_distance=20,  # TODO: generalise 
-        dropout=hparams.dropout, 
+        nli_max_distance=20,  # TODO: generalise
+        dropout=hparams.dropout,
         composition="maxpool" if hparams.max_pooling_states else "avg")
     inf_model = InferenceModel(
         family=hparams.posterior,
@@ -151,7 +151,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
     # Generative components
     src_embedder = torch.nn.Embedding(vocab_src.size(), hparams.emb_size, padding_idx=vocab_src[PAD_TOKEN])
     tgt_embedder = torch.nn.Embedding(vocab_tgt.size(), hparams.emb_size, padding_idx=vocab_tgt[PAD_TOKEN])
-    
+
     language_model = CorrelatedCategoricalsLM(
         embedder=src_embedder,
         latent_size=hparams.latent_size,
@@ -163,14 +163,14 @@ def create_model(hparams, vocab_src, vocab_tgt):
         feed_z=hparams.feed_z,
         gate_z=False  # TODO implement
     )
-    
+
     # Auxiliary generative components
     aux_lms = create_aux_language_models(src_embedder, hparams)
     aux_tms = create_aux_translation_models(src_embedder, tgt_embedder, hparams)
-    
+
     encoder = create_encoder(hparams)
     attention = create_attention(hparams)
-    decoder = create_decoder(attention, hparams)  
+    decoder = create_decoder(attention, hparams)
     translation_model = AttentionBasedTM(
         src_embedder=src_embedder,
         tgt_embedder=tgt_embedder,
@@ -181,7 +181,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
         feed_z=hparams.feed_z,
         tied_embeddings=hparams.tied_embeddings
     )
-        
+
     inf_model = create_inference_model(src_embedder, tgt_embedder, hparams)
 
     model = AEVNMT(
@@ -217,6 +217,10 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
         KL_weight = min(1., (1.0 / hparams.KL_annealing_steps) * step)
     else:
         KL_weight = 1.
+
+    #TODO: only TL side losses if x is synthetic
+    if synthetic_x:
+        lm_logits=None
 
     # Compute the loss.
     loss = model.loss(tm_likelihood, lm_likelihood, y_out, x_out, qz,
@@ -324,7 +328,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
 
         if hparams.sample_decoding:
             raw_hypothesis = sampling_decode(
-                model.translation_model.decoder, 
+                model.translation_model.decoder,
                 model.translation_model.tgt_embed,
                 model.translation_model.generate, hidden,
                 encoder_outputs, encoder_final,
@@ -333,7 +337,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
                 z if hparams.feed_z else None)
         elif hparams.beam_width <= 1:
             raw_hypothesis = greedy_decode(
-                model.translation_model.decoder, 
+                model.translation_model.decoder,
                 model.translation_model.tgt_embed,
                 model.translation_model.generate, hidden,
                 encoder_outputs, encoder_final,
@@ -342,8 +346,8 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
                 z if hparams.feed_z else None)
         else:
             raw_hypothesis = beam_search(
-                model.translation_model.decoder, 
-                model.translation_model.tgt_embed, 
+                model.translation_model.decoder,
+                model.translation_model.tgt_embed,
                 model.translation_model.generate,
                 vocab_tgt.size(), hidden, encoder_outputs,
                 encoder_final, seq_mask_x,
@@ -387,7 +391,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
 
             # Infer q(z|x) for this batch.
             qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
-            pz = model.prior()  
+            pz = model.prior()
             total_KL += torch.distributions.kl.kl_divergence(qz, pz).sum().item()
 
             # Take s importance samples from q(z|x):
@@ -408,7 +412,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
 
                 # Compute log P(x|z_s)
                 log_lm_prob = model.language_model.log_prob(lm_likelihood, x_out)
-                
+
                 # Compute prior probability log P(z_s) and importance weight q(z_s|x)
                 log_pz = pz.log_prob(z) # [B, latent_size] -> [B]
                 log_qz = qz.log_prob(z)
@@ -417,7 +421,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 batch_log_marginals['joint/main'][s] = log_tm_prob + log_lm_prob + log_pz - log_qz
                 batch_log_marginals['lm/main'][s] = log_lm_prob + log_pz - log_qz
                 batch_log_marginals['tm/main'][s] = log_tm_prob + log_pz - log_qz
-                
+
                 for aux_comp, aux_px_z in aux_lm_likelihoods.items():
                     batch_log_marginals['lm/' + aux_comp][s] = model.log_likelihood_lm(aux_comp, aux_px_z, x_out) + log_pz - log_qz
                 for aux_comp, aux_py_xz in aux_tm_likelihoods.items():
