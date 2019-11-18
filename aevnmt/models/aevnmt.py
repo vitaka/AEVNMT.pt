@@ -73,8 +73,20 @@ class AEVNMT(nn.Module):
                 transformer_layers=8, # TODO: create a hyperparameter for this
                 nli_shared_size=self.language_model.embedder.embedding_dim,
                 nli_max_distance=20,  # TODO: create a hyperaparameter for this
-                dropout=dropout, composition="maxpool" if max_pool else "avg"))
-
+                dropout=dropout, composition="maxpool" if max_pool else "avg"),encoder_y=get_inference_encoder(
+                    encoder_style=inf_encoder_style,
+                    conditioning_context=inf_conditioning,
+                    embedder_x=self.tgt_embedder,
+                    embedder_y=self.language_model.embedder,
+                    hidden_size=encoder.hidden_size,
+                    rnn_bidirectional=encoder.bidirectional,
+                    rnn_num_layers=encoder.num_layers,
+                    rnn_cell_type=encoder.cell_type,
+                    transformer_heads=8,  # TODO: create a hyperparameter for this
+                    transformer_layers=8, # TODO: create a hyperparameter for this
+                    nli_shared_size=self.language_model.embedder.embedding_dim,
+                    nli_max_distance=20,  # TODO: create a hyperaparameter for this
+                    dropout=dropout, composition="maxpool" if max_pool else "avg"))
 
         self.bow_output_layer=None
         self.bow_output_layer_tl=None
