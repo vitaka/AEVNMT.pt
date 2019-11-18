@@ -175,7 +175,7 @@ def get_inference_encoder(encoder_style: str, conditioning_context: str,
 
 class InferenceModel(nn.Module):
 
-    def __init__(self, family: str, latent_size: int, hidden_size: int, encoder: InferenceEncoder):
+    def __init__(self, family: str, latent_size: int, hidden_size: int, encoder: InferenceEncoder, encoder_y: InferenceEncoder = None):
         """
         :param src_embedder: uses this embedder, but detaches its output from the graph as to not compute
                              gradients for it.
@@ -183,6 +183,8 @@ class InferenceModel(nn.Module):
         super().__init__()
         self.family = family
         self.encoder = encoder
+        #TODO: maybe this is not the cleanest solution..
+        self.encoder_y=encoder_y
         if family == "gaussian":
             self.conditioner = NormalLayer(encoder.output_size, hidden_size, latent_size)
         elif family == "kumaraswamy":
@@ -192,11 +194,15 @@ class InferenceModel(nn.Module):
 
     def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y) -> torch.distributions.Distribution:
         # [B, D]
-        outputs = self.encoder(x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y)
+        if x is None and self.encoder_y is not None:
+            #TODO: maybe this is not the cleanest solution..
+            outputs = self.encoder(y, seq_mask_y, seq_len_y,x, seq_mask_x, seq_len_x)
+        else:
+            outputs = self.encoder(x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y)
         return self.conditioner(outputs)
 
     def parameters(self, recurse=True):
-        return chain(self.encoder.parameters(recurse=recurse), self.conditioner.parameters(recurse=recurse))
+        return chain(self.encoder.parameters(recurse=recurse), self.conditioner.parameters(recurse=recurse), self.encoder_y.parameters(recurse=recurse) if self.encoder_y is not None else iter(()) )
 
     def named_parameters(self, prefix='', recurse=True):
-        return chain(self.encoder.named_parameters(prefix='', recurse=True), self.conditioner.named_parameters(prefix='', recurse=True), )
+        return chain(self.encoder.named_parameters(prefix='', recurse=True), self.conditioner.named_parameters(prefix='', recurse=True), self.encoder_y.named_parameters(prefix='',recurse=recurse) if self.encoder_y is not None else iter(()) )
