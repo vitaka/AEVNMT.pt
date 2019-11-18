@@ -100,7 +100,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
                       KL_weight=KL_weight,
                       reduction="mean",
                       bow_logits=bow_logits,
-                      bow_logits_tl=bow_logits_tl,MADE_logits=MADE_logits,lm_shuf_logits=lm_shuf_logits,synthetic_x=synthetic_x)
+                      bow_logits_tl=bow_logits_tl,MADE_logits=MADE_logits,lm_shuf_logits=lm_shuf_logits)
 
     if summary_writer:
         summary_writer.add_histogram("posterior/z", z, step)
