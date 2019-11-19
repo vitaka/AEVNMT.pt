@@ -331,7 +331,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
                 model.translation_model.decoder,
                 model.translation_model.tgt_embed,
                 model.translation_model.generate, hidden,
-                encoder_outputs, encoder_final,
+                encoder_outputs, encoder_final,seq_mask_x.size(0),
                 seq_mask_x, vocab_tgt[SOS_TOKEN], vocab_tgt[EOS_TOKEN],
                 vocab_tgt[PAD_TOKEN], hparams.max_decoding_length,
                 z if hparams.feed_z else None)
@@ -340,7 +340,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
                 model.translation_model.decoder,
                 model.translation_model.tgt_embed,
                 model.translation_model.generate, hidden,
-                encoder_outputs, encoder_final,
+                encoder_outputs, encoder_final,seq_mask_x.size(0),
                 seq_mask_x, vocab_tgt[SOS_TOKEN], vocab_tgt[EOS_TOKEN],
                 vocab_tgt[PAD_TOKEN], hparams.max_decoding_length,
                 z if hparams.feed_z else None)
