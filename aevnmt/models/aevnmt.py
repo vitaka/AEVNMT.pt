@@ -466,6 +466,7 @@ class AEVNMT(nn.Module):
         :param reduction: what reduction to apply, none ([B]), mean ([]) or sum ([])
         :param bow_logits: [B,vocab_size]
         """
+        bsz=tm_logits.size(0)
 
         # Compute the loss for each batch element. Logits are of the form [B, T, vocab_size],
         # whereas the cross-entropy function wants a loss of the form [B, vocab_svocab_sizee, T].
@@ -482,7 +483,7 @@ class AEVNMT(nn.Module):
         if lm_shuf_logits is not None:
             lm_shuf_loss=self.language_model_shuf.loss(lm_shuf_logits,targets_x_shuf,reduction="none")
 
-        bow_loss=torch.zeros_like(lm_loss)
+        bow_loss=torch.zeros(bsz,device=tm_logits.device)
         if bow_logits is not None:
             bow_logprobs=-F.log_softmax(bow_logits,-1)
             bsz=bow_logits.size(0)
@@ -492,7 +493,7 @@ class AEVNMT(nn.Module):
                 bow=bow.masked_select(bow_mask)
                 bow_loss[i]=torch.sum( bow_logprobs[i][bow] )
 
-        bow_loss_tl=torch.zeros_like(lm_loss)
+        bow_loss_tl=torch.zeros(bsz,device=tm_logits.device)
         if bow_logits_tl is not None:
             bow_logprobs=-F.log_softmax(bow_logits_tl,-1)
             bsz=bow_logits_tl.size(0)
@@ -502,9 +503,8 @@ class AEVNMT(nn.Module):
                 bow=bow.masked_select(bow_mask)
                 bow_loss_tl[i]=torch.sum( bow_logprobs[i][bow] )
 
-        MADE_loss=torch.zeros_like(lm_loss)
+        MADE_loss=torch.zeros(bsz,device=tm_logits.device)
         if MADE_logits is not None:
-            bsz=targets_x.size(0)
             made_ref=torch.zeros((bsz,self.MADE.event_size),device=targets_x.device)
             for i in range(bsz):
                 bow=torch.unique(targets_x[i] )

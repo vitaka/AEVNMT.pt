@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import time
 
 import aevnmt.aevnmt_helper as aevnmt_helper
-from aevnmt.components import ancestral_sample
+from aevnmt.components import sampling_decode
 from aevnmt.data import batch_to_sentences, SOS_TOKEN, EOS_TOKEN, PAD_TOKEN, ParallelDatasetFlippedView
 
 from itertools import cycle, chain
@@ -228,7 +228,7 @@ def senvae_monolingual_step_x(
 def aevnmt_monolingual_step(model, vocab_src,
                             y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
                             hparams, step, device,
-                            optimizers, KL_weight,
+                            optimizers,lr_schedulers, KL_weight,
                             tracker: Tracker,
                             reward_stats=None,
                             writer=None,
@@ -241,7 +241,6 @@ def aevnmt_monolingual_step(model, vocab_src,
     # [B, dz]
     z = qz.rsample()
     # [B]
-    log_qz = qz.log_prob(z).sum(dim=1)
     if writer:
         writer.add_histogram("posterior-y/z", z, step)
         for param_name, param_value in get_named_params(qz):
@@ -249,14 +248,12 @@ def aevnmt_monolingual_step(model, vocab_src,
 
     hidden = model.init_lm(z)
 
-    sample_dict = sampling_decode(model.language_model, model.language_model.embed,
+    raw_hypothesis = sampling_decode(model.language_model, model.language_model.embedder,
                                    model.lm_generate, hidden,
                                    None, None,
-                                   hparams.batch_size,None, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
-                                   vocab_src[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None)
+                                   y_in.size(0),None, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
+                                   vocab_src[PAD_TOKEN], hparams.max_decoding_length, z if hparams.feed_z else None)
 
-    # Here we convert the sample to a batch of inputs
-    raw_hypothesis = sample_dict['sample']
 
     #TODO: convert to strings only if there is a writer?
     hypothesis = batch_to_sentences(raw_hypothesis, vocab_src)
@@ -264,7 +261,6 @@ def aevnmt_monolingual_step(model, vocab_src,
         gather_examples['sampled_x'] = hypothesis
     x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
         hypothesis, vocab_src, device, word_dropout=0.)
-
     aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x, y_in, y_out, seq_mask_y, seq_len_y,step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="monolingual/y", synthetic_x=True)
 
 
@@ -380,6 +376,7 @@ def train(model,
                         step=step_counter.step(),
                         device=device,
                         optimizers=optimizers,
+                        lr_schedulers=lr_schedulers,
                         KL_weight=KL_weight,
                         tracker=tracker_y,
                         gather_examples=backtranslated_examples if (step_counter.step(
@@ -471,9 +468,8 @@ def train(model,
 
     # Load the best model and run validation again, make sure to not write
     # summaries.
-    model_xy.load_state_dict(torch.load(out_dir / f"model.{hparams.src}-{hparams.tgt}.pt"))
-    model_yx.load_state_dict(torch.load(out_dir / f"model.{hparams.tgt}-{hparams.src}.pt"))
-    print(f"Loaded best model found at step {best_step} (epoch {best_epoch}).")
+    best_model_info = ckpt.load_best({f"{hparams.src}-{hparams.tgt}": model}, hparams.criterion)
+    print(f"Loaded best model (wrt {hparams.criterion}) found at step {best_model_info['step']} (epoch {best_model_info['epoch']}).")
     run_evaluation(step_counter.step(), writer=None)
 
 
