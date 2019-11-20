@@ -92,7 +92,7 @@ options = {
     "shuffle_lm_keep_bpe":(bool, False, False, "Shuffle whole words instead of BPE fragments.", 1),
     "mixture_likelihood":(bool, False, False, "Use a mixture of likelihoods", 1),
     "mixture_likelihood_dir_prior":(float, 0., False, "Specify a symmetric Dirichlet prior over mixture weights (use 0 for uniform and deterministic weights).", 1),
-    
+
     "ibm1_loss":(bool, False, False, "Side loss based on IBM1-style likelihood p(y|x,z)", 1),
 
     "encoder_style": (str, "rnn", False, "The type of encoder architecture: rnn|transformer", 1),

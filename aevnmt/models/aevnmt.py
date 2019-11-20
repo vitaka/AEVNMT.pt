@@ -37,6 +37,8 @@ class AEVNMT(nn.Module):
         self.aux_lms = nn.ModuleDict(aux_lms)
         self.aux_tms = nn.ModuleDict(aux_tms)
 
+
+
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
         # they will be moved to the appropriate device on which the model is run.
@@ -206,10 +208,13 @@ class AEVNMT(nn.Module):
             lm_log_likelihood = self.language_model.log_prob(lm_likelihood, targets_x)
         lm_loss = - lm_log_likelihood
 
+
         # Compute the KL divergence between the distribution used to sample z, and the prior
         # distribution.
         pz = self.prior()
 
+        # TODO: N this is [...,D], whereas with MoG this is [...]
+        #  we need to wrap stuff around torch.distributions.Independent
         KL = torch.distributions.kl.kl_divergence(qz, pz)
         raw_KL = KL * 1
 
