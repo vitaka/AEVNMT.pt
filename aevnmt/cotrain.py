@@ -368,7 +368,7 @@ def train(model,
                     aevnmt_monolingual_step(
                         model, vocab_src,
                         y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
-                        y_shuf_in, _shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
+                        y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
                         hparams,
                         step=step_counter.step(),
                         device=device,
