@@ -216,7 +216,7 @@ def senvae_monolingual_step_x(
 
 def aevnmt_monolingual_step(model, vocab_src,
                             y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
-                            y_shuf_in, _shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
+                            y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
                             hparams, step, device,
                             optimizers,lr_schedulers, KL_weight,
                             tracker: Tracker,
@@ -236,10 +236,10 @@ def aevnmt_monolingual_step(model, vocab_src,
         for param_name, param_value in get_named_params(qz):
             writer.add_histogram("posterior-y/%s" % param_name, param_value, step)
 
-    hidden = model.init_lm(z)
+    hidden = model.language_model.init(z)
 
     raw_hypothesis = sampling_decode(model.language_model, model.language_model.embedder,
-                                   model.lm_generate, hidden,
+                                   model.language_model.generate, hidden,
                                    None, None,
                                    y_in.size(0),None, vocab_src[SOS_TOKEN], vocab_src[EOS_TOKEN],
                                    vocab_src[PAD_TOKEN], hparams.max_decoding_length, z if hparams.feed_z else None)
@@ -251,6 +251,7 @@ def aevnmt_monolingual_step(model, vocab_src,
         gather_examples['sampled_x'] = hypothesis
     x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
         hypothesis, vocab_src, device, word_dropout=0.)
+    
 
     aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x,
     y_in, y_out, seq_mask_y, seq_len_y,

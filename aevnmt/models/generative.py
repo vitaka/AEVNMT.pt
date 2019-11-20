@@ -232,15 +232,21 @@ class CorrelatedCategoricalsLM(GenerativeLM):
             self.output_matrix = nn.Parameter(torch.randn(embedder.num_embeddings, hidden_size))
         self.dropout_layer = nn.Dropout(p=dropout)
 
+    def generate(self,pre_output):
+        W = self.embedder.weight if self.tied_embeddings else self.output_matrix
+        return F.linear(pre_output, W)
+
+    def init(self,z):
+        hidden = tile_rnn_hidden(self.init_layer(z), self.rnn)
+        return hidden
+
     def step(self, x_embed, hidden, z):
         rnn_input = x_embed.unsqueeze(1)
         if self.feed_z:
             rnn_input=torch.cat([rnn_input, z.unsqueeze(1)], dim=-1)
         rnn_output, hidden = self.rnn(rnn_input, hidden)
         rnn_output = self.dropout_layer(rnn_output)
-        W_out = self.embedder.weight if self.tied_embeddings else self.output_matrix
-        logits = F.linear(rnn_output, W_out)
-        return hidden, logits
+        return hidden, rnn_output
 
     def unroll(self, x, hidden, z):
         # [B, Tx, Dx]
@@ -248,13 +254,8 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         outputs = []
         for t in range(x_embed.size(1)):
             # [B, 1, Dx]
-            rnn_input = x_embed[:, t].unsqueeze(1)
-            if self.feed_z:
-                rnn_input=torch.cat([rnn_input, z.unsqueeze(1)],dim=-1)
-            rnn_output, hidden = self.rnn(rnn_input, hidden)
-            rnn_output = self.dropout_layer(rnn_output)
-            W_out = self.embedder.weight if self.tied_embeddings else self.output_matrix
-            logits = F.linear(rnn_output, W_out)
+            hidden,rnn_output = self.step(x_embed[:, t],hidden,z)
+            logits=self.generate(rnn_output)
             outputs.append(logits)
         return torch.cat(outputs, dim=1)
 
@@ -264,7 +265,7 @@ class CorrelatedCategoricalsLM(GenerativeLM):
             X_i|z, x_{<i} ~ Cat(f(z, x_{<i}))
         with shape [B, Tx, Vx]
         """
-        hidden = tile_rnn_hidden(self.init_layer(z), self.rnn)
+        hidden = self.init(z)
         # [B, Tx, Vx]
         logits = self.unroll(x, hidden=hidden, z=z)
         return Categorical(logits=logits)
