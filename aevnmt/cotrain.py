@@ -448,10 +448,8 @@ def train(model,
                           f"x: {step_counter.step('x')} "
                           f"y: {step_counter.step('y')}) "
                           f"AEVNMT(x,y) = {tracker_xy.avg('ELBO', 'num_sentences'):,.2f} -- "
-                          f"AEVNTM(x) = {tracker_x.avg('ELBO', 'num_sentences'):,.2f} -- "
                           f"AEVNMT(y) = {tracker_y.avg('ELBO', 'num_sentences'):,.2f} -- "
                           f"SenVAE(x) = {tracker_x.avg('SenVAE/ELBO', 'num_sentences'):,.2f} -- "
-                          f"SenVAE(y) = {tracker_y.avg('SenVAE/ELBO', 'num_sentences'):,.2f} -- "
                           f"{tokens_per_sec:,.0f} tokens/s -- "
                           f"{elapsed:,.0f} s -- ")
 

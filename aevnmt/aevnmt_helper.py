@@ -308,7 +308,8 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
             x_in, _, seq_mask_x, seq_len_x = create_batch([val_sentence_x], vocab_src, device)
             y_in, y_out, seq_mask_y, seq_len_y = create_batch([val_sentence_y], vocab_tgt, device)
             z = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y).sample()
-            _, _, state, _, _ = model(x_in, seq_mask_x, seq_len_x, y_in, z)
+            _, _, state, _, _ = model(x_in, seq_mask_x, seq_len_x, y_in,None,None,None,
+            None,None,None, z)
             att_weights = state['att_weights'].squeeze().cpu().numpy()
         src_labels = batch_to_sentences(x_in, vocab_src, no_filter=True)[0].split()
         tgt_labels = batch_to_sentences(y_out, vocab_tgt, no_filter=True)[0].split()
