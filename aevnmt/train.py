@@ -124,9 +124,9 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             return_dict = train_step(
                     model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in,
                     y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
-                    x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in,
-                    y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in  , hparams,
-                    step, summary_writer=summary_writer)
+                    noisy_x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf,
+                    noisy_y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf,
+                    hparams,step, summary_writer=summary_writer)
             loss = return_dict["loss"]
 
             # Backpropagate and update gradients.

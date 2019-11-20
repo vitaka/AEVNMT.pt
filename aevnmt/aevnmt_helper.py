@@ -275,8 +275,8 @@ def create_model(hparams, vocab_src, vocab_tgt):
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
-              x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in,
-              y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
+              x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf,
+              y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf,
                hparams, step, summary_writer=None, synthetic_x=False):
 
     # Use q(z|x) for training to sample a z.
@@ -285,8 +285,8 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
 
     # Compute the translation and language model logits.
     tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in,
-    noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
-    noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
+    x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
+    y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
     z)
 
     # Do linear annealing of the KL over KL_annealing_steps if set.

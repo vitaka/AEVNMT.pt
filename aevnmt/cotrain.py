@@ -118,16 +118,18 @@ def mono_vae_loss(
     return loss
 
 
-def aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x, y_in, y_out, seq_mask_y, seq_len_y,step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="bilingual/xy", synthetic_x=False):
-
-    x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=noisy_x_shuf_in=None
-    y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
+def aevnmt_bilingual_step_xy(model, hparams,
+x_in, x_out, seq_mask_x, seq_len_x,
+y_in, y_out, seq_mask_y, seq_len_y,
+x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf,
+y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf,
+step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="bilingual/xy", synthetic_x=False):
 
     loss_terms = aevnmt_helper.train_step(
             model, x_in, x_out, seq_mask_x, seq_len_x, x_in,
             y_in, y_out, seq_mask_y, seq_len_y, y_in,
-            x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in,
-            y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
+            x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf,
+            y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf,
             hparams,
             step, summary_writer=writer, synthetic_x=synthetic_x)
     loss=loss_terms["loss"]
@@ -249,7 +251,12 @@ def aevnmt_monolingual_step(model, vocab_src,
         gather_examples['sampled_x'] = hypothesis
     x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
         hypothesis, vocab_src, device, word_dropout=0.)
-    aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x, y_in, y_out, seq_mask_y, seq_len_y,step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="monolingual/y", synthetic_x=True)
+
+    aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x,
+    y_in, y_out, seq_mask_y, seq_len_y,
+    x_shuf_in=None, x_shuf_out=None, seq_mask_x_shuf=None, seq_len_x_shuf=None,
+    y_shuf_in=noisy_y_shuf_in, y_shuf_out=y_shuf_out, seq_mask_y_shuf=seq_mask_y_shuf, seq_len_y_shuf=seq_len_y_shuf,
+    step=step, optimizers=optimizers,lr_schedulers=lr_schedulers,KL_weight=KL_weight,tracker=tracker,writer=None,title="monolingual/y", synthetic_x=True)
 
 
 
@@ -423,9 +430,26 @@ def train(model,
                 y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in = create_noisy_batch(
                     sentences_y, vocab_tgt, device, word_dropout=hparams.word_dropout)
 
+
+                if 'shuffled' in model.aux_lms:
+                    x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
+                        sentences_x, vocab_src, device,
+                        word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                else:
+                    x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=noisy_x_shuf_in=None
+
+                if 'shuffled' in model.aux_tms:
+                    y_shuf_in, _shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
+                        sentences_y, vocab_tgt, device,
+                        word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                else:
+                    y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
+
                 aevnmt_bilingual_step_xy(model=model, hparams=hparams,
                 x_in=noisy_x_in, x_out=x_out, seq_mask_x=seq_mask_x, seq_len_x=seq_len_x,
                 y_in=noisy_y_in, y_out=y_out, seq_mask_y=seq_mask_y, seq_len_y=seq_len_y,
+                x_shuf_in=noisy_x_shuf_in, x_shuf_out=x_shuf_out, seq_mask_x_shuf=seq_mask_x_shuf, seq_len_x_shuf=seq_len_x_shuf,
+                y_shuf_in=noisy_y_shuf_in, y_shuf_out=y_shuf_out, seq_mask_y_shuf=seq_mask_y_shuf, seq_len_y_shuf=seq_len_y_shuf,
                 step=step_counter.step(), optimizers=optimizers,lr_schedulers=lr_schedulers,
                 KL_weight=KL_weight,
                 tracker=tracker_xy,
