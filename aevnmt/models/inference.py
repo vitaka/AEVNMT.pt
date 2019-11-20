@@ -312,11 +312,11 @@ class SwitchingInferenceModel(InferenceModel):
     """
 
     def __init__(self, model_x: InferenceModel, model_y: InferenceModel, model_xy: InferenceModel):
-        assert model_xy.latent_size == model_x.latent_size == model_y.latent_size, 'Different latent sizes'
-        super().__init__(model_xy.latent_size)
-        self.model_xy = model_xy
+        assert model_x.latent_size == model_y.latent_size == model_xy.latent_size, 'Different latent sizes'
+        super().__init__(model_x.latent_size)
         self.model_x = model_x
         self.model_y = model_y
+        self.model_xy = model_xy
 
     def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y) -> Distribution:
         if x is not None and y is not None:
