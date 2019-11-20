@@ -37,21 +37,6 @@ class AEVNMT(nn.Module):
         self.aux_lms = nn.ModuleDict(aux_lms)
         self.aux_tms = nn.ModuleDict(aux_tms)
 
-        self.MADE_tl=None
-        if MADE_tl:
-            MADE_tl = MADEConditioner(
-                input_size= self.language_model.embedder.num_embeddings + self.latent_size,  # our only input to the MADE layer is the observation
-                output_size= self.language_model.embedder.num_embeddings,  # number of parameters to predict
-                context_size=self.latent_size,
-                hidden_sizes=[decoder.hidden_size, decoder.hidden_size], # TODO: is this OK?
-                num_masks=10 #TODO: is that OK?
-            )
-            self.MADE_tl = AutoregressiveLikelihood(
-                event_size=self.language_model.embedder.num_embeddings,  # size of observation
-                dist_type=Bernoulli,
-                conditioner=made_tl
-                )
-
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
         # they will be moved to the appropriate device on which the model is run.
@@ -143,7 +128,7 @@ class AEVNMT(nn.Module):
         y_embed = self.dropout_layer(y_embed)
         return y_embed
 
-    def forward(self, x, seq_mask_x, seq_len_x, y, z):
+    def forward(self, x, seq_mask_x, seq_len_x, y, x_shuf,seq_mask_x_shuf,seq_len_x_shuf,y_shuf,seq_mask_y_shuf,seq_len_y_shuf, z):
         """
         Run all components of the model and return parameterised distributions.
 
@@ -157,19 +142,29 @@ class AEVNMT(nn.Module):
 
         state = dict()
         lm_likelihood = self.language_model(x, z, state)
-        tm_likelihood = self.translation_model(x, seq_mask_x, seq_len_x, y, z, state)
+        if y is not None:
+            tm_likelihood = self.translation_model(x, seq_mask_x, seq_len_x, y, z, state)
+        else:
+            tm_likelihood=None
 
         # Obtain auxiliary X_i|z, x_{<i}
         aux_lm_likelihoods = dict()
         for aux_name, aux_decoder in self.aux_lms.items():
-            # TODO: give special treatment to components that take shuffled inputs, e.g. if aux_decoder.shuffled_inputs: aux_lm_likelihoods[aux_name] = aux_decoder(x_shuff, z)
-            aux_lm_likelihoods[aux_name] = aux_decoder(x, z)
+            if aux_name == "shuffled":
+                aux_lm_likelihoods[aux_name] = aux_decoder(x_shuf, z)
+            else:
+                aux_lm_likelihoods[aux_name] = aux_decoder(x, z)
+
 
         # Obtain auxiliary Y_j|z, x, y_{<j}
         aux_tm_likelihoods = dict()
-        for aux_name, aux_decoder in self.aux_tms.items():
-            # TODO: give special treatment to components that take shuffled inputs, e.g. if aux_decoder.shuffled_inputs: aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y_shuff, z)
-            aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y, z)
+        if y is not None:
+            for aux_name, aux_decoder in self.aux_tms.items():
+                if aux_name == "shuffled":
+                    #Xs are ignored
+                    aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y_shuf, z)
+                else:
+                    aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y, z)
 
         return tm_likelihood, lm_likelihood, state, aux_lm_likelihoods, aux_tm_likelihoods
 
@@ -181,7 +176,7 @@ class AEVNMT(nn.Module):
         # TODO: give special treatment to components that take shuffled inputs, e.g. if aux_decoder.shuffled_inputs: aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y_shuff, z)
         return self.aux_lms[comp_name].log_prob(likelihood, x)
 
-    def loss(self, tm_likelihood: Categorical, lm_likelihood: Categorical, targets_y, targets_x, qz: Distribution,
+    def loss(self, tm_likelihood: Categorical, lm_likelihood: Categorical, targets_y, targets_x, targets_y_shuf, targets_x_shuf, qz: Distribution,
             free_nats=0., KL_weight=1., reduction="mean", aux_lm_likelihoods=dict(), aux_tm_likelihoods=dict()):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
@@ -200,11 +195,15 @@ class AEVNMT(nn.Module):
         :param aux_tm_likelihoods: a dictionary with TM likelihoods
         """
         # [B]
-        tm_log_likelihood = self.translation_model.log_prob(tm_likelihood, targets_y)
+        tm_log_likelihood=0.0
+        if tm_likelihood is not None:
+            tm_log_likelihood = self.translation_model.log_prob(tm_likelihood, targets_y)
         tm_loss = - tm_log_likelihood
 
         # [B]
-        lm_log_likelihood = self.language_model.log_prob(lm_likelihood, targets_x)
+        lm_log_likelihood=0.0
+        if lm_likelihood is not None:
+            lm_log_likelihood = self.language_model.log_prob(lm_likelihood, targets_x)
         lm_loss = - lm_log_likelihood
 
         # Compute the KL divergence between the distribution used to sample z, and the prior
@@ -226,16 +225,17 @@ class AEVNMT(nn.Module):
         # [Cx, B]
         side_lm_likelihood = torch.zeros([len(aux_lm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
         for c, (aux_name, aux_likelihood) in enumerate(aux_lm_likelihoods.items()):
-            out_dict['lm/' + aux_name] = self.log_likelihood_lm(aux_name, aux_likelihood, targets_x)
-            # TODO: give special treatment to components that take shuffled outputs, e.g. if aux_decoder.shuffled_inputs: self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuff)
+            out_dict['lm/' + aux_name] = self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuf if aux_name == "shuffled" else targets_x )
             side_lm_likelihood[c] = out_dict['lm/' + aux_name]
+
         # Alternative views of p(y|z,x)
         # [Cy, B]
+
         side_tm_likelihood = torch.zeros([len(aux_tm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
-        for c, (aux_name, aux_likelihood) in enumerate(aux_tm_likelihoods.items()):
-            out_dict['tm/' + aux_name] = self.log_likelihood_tm(aux_name, aux_likelihood, targets_y)
-            # TODO: give special treatment to components that take shuffled outputs, e.g. if aux_decoder.shuffled_inputs: self.log_likelihood_lm(aux_name, aux_likelihood, targets_y_shuff)
-            side_tm_likelihood[c] = out_dict['tm/' + aux_name]
+        if targets_y is not None:
+            for c, (aux_name, aux_likelihood) in enumerate(aux_tm_likelihoods.items()):
+                out_dict['tm/' + aux_name] = self.log_likelihood_tm(aux_name, aux_likelihood, targets_y_shuf if aux_name == "shuffled" else targets_y)
+                side_tm_likelihood[c] = out_dict['tm/' + aux_name]
 
         if not self.mixture_likelihood:
             # ELBO
@@ -249,6 +249,7 @@ class AEVNMT(nn.Module):
             # main log-likelihoods
             out_dict['lm/main'] = lm_log_likelihood
             out_dict['tm/main'] = tm_log_likelihood
+            out_dict['ELBO']=elbo
         else:
             # ELBO uses mixture models for X|z and Y|z,x:
             #  E_q[ \log P(x|z) + \log P(y|z,x)] - KL(q(z) || p(z))
@@ -278,6 +279,7 @@ class AEVNMT(nn.Module):
             out_dict['tm/main'] = tm_mixture
             out_dict['lm/recurrent'] = lm_log_likelihood
             out_dict['tm/recurrent'] = tm_log_likelihood
+            out_dict['ELBO']=elbo
 
         # Return differently according to the reduction setting.
         if reduction == "mean":

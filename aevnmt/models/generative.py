@@ -1,6 +1,6 @@
 """
-AEVNMT has two generative components, namely, 
-    a language model (LM) and a translation model (TM), 
+AEVNMT has two generative components, namely,
+    a language model (LM) and a translation model (TM),
     p(x|z) and p(y|z,x), respectively.
 
 These are also known as decoders or generators, here we provide implementations for those.
@@ -20,7 +20,7 @@ from aevnmt.components import tile_rnn_hidden, rnn_creation_fn, tile_rnn_hidden_
 
 class GenerativeLM(nn.Module):
     """
-    The forward will return the likelihoods 
+    The forward will return the likelihoods
         X_i|z,x_{<i}
     that is, a batch of sequences of torch distribution objects.
 
@@ -36,7 +36,7 @@ class GenerativeLM(nn.Module):
 
         x: [B, Tx] token ids
         z: [B, Dz] stochastic embeddings
-        state: use this dictionary to return something about the forward pass (for example, 
+        state: use this dictionary to return something about the forward pass (for example,
             attention weights, or other details of the computation that you whish to log)
         """
         raise NotImplementedError("Implement me!")
@@ -62,7 +62,7 @@ class IndependentLM(GenerativeLM):
         super().__init__()
         self.pad_idx = pad_idx
         self.output_layer = nn.Linear(latent_size, vocab_size, bias=True)
-    
+
     def forward(self, x, z, state=dict()) -> Categorical:
         """
         Return Categorical distributions
@@ -71,7 +71,7 @@ class IndependentLM(GenerativeLM):
         """
         # [B, 1, Vx]
         return Categorical(logits=self.output_layer(z).unsqueeze(1))
-    
+
     def log_prob(self, likelihood: Categorical, x):
         # [B, Tx, Vx]
         likelihood = likelihood.expand(x.size())
@@ -97,14 +97,14 @@ class CorrelatedBernoullisLM(GenerativeLM):
         self.counter = resample_mask_every
         self.vocab_size = vocab_size
         self.made_conditioner = MADEConditioner(
-            input_size=vocab_size + latent_size, 
-            output_size=vocab_size,  
+            input_size=vocab_size + latent_size,
+            output_size=vocab_size,
             context_size=latent_size,
             hidden_sizes=hidden_sizes,
             num_masks=num_masks
         )
         self.product_of_bernoullis = AutoregressiveLikelihood(
-            event_size=vocab_size, 
+            event_size=vocab_size,
             dist_type=Bernoulli,
             conditioner=self.made_conditioner
         )
@@ -112,21 +112,21 @@ class CorrelatedBernoullisLM(GenerativeLM):
     def make_indicators(self, x):
         """Return a vocab_size-dimensional bit-vector view of x"""
         # We convert ids to V-dimensional one-hot vectors and reduce-sum the time dimension
-        #  this gives us word counts 
+        #  this gives us word counts
         # [B, T] -> [B, T, V] -> [B, V]
-        word_counts = F.one_hot(x, self.vocab_size).sum(1) 
+        word_counts = F.one_hot(x, self.vocab_size).sum(1)
         word_counts[:, self.pad_idx] = 0
         indicators = (word_counts > 0).float()
         return indicators
 
     def forward(self, x, z, state=dict()) -> Bernoulli:
         """
-        Return Bernoulli distributions 
+        Return Bernoulli distributions
             [v \in X]|z, \Sigma_{<v} ~ Bernoulli(b_v(z, \Sigma_{<v}))
         with shape [B, Vx] where Vx = |\Sigma| and \Sigma is the vocabulary.
         """
         # We convert ids to V-dimensional one-hot vectors and sum the time dimension
-        #  this gives us word counts 
+        #  this gives us word counts
         # [B, V]
         indicators = self.make_indicators(x)
         if self.resample_every > 0:
@@ -143,7 +143,7 @@ class CorrelatedBernoullisLM(GenerativeLM):
 @register_conditional_parameterization(Poisson)
 def make_poisson(inputs, event_size):
     assert inputs.size(-1) == event_size, "Expected [...,%d] got [...,%d]" % (event_size, inputs.size(-1))
-    # we clamp the Poisson rate to [1e-6, 30] to prevent instabilities 
+    # we clamp the Poisson rate to [1e-6, 30] to prevent instabilities
     # this is relatively mild (as we don't expect many words to be repeat 30 times or more on average)
     return Poisson(torch.clamp(F.softplus(inputs), min=1e-6, max=30))
 
@@ -163,14 +163,14 @@ class CorrelatedPoissonsLM(GenerativeLM):
         self.counter = resample_mask_every
         self.vocab_size = vocab_size
         self.made_conditioner = MADEConditioner(
-            input_size=vocab_size + latent_size, 
-            output_size=vocab_size,  
+            input_size=vocab_size + latent_size,
+            output_size=vocab_size,
             context_size=latent_size,
             hidden_sizes=hidden_sizes,
             num_masks=num_masks
         )
         self.product_of_poissons = AutoregressiveLikelihood(
-            event_size=vocab_size, 
+            event_size=vocab_size,
             dist_type=Poisson,
             conditioner=self.made_conditioner
         )
@@ -178,20 +178,20 @@ class CorrelatedPoissonsLM(GenerativeLM):
     def make_counts(self, x):
         """Return a vocab_size-dimensional count-vector view of x"""
         # We convert ids to V-dimensional one-hot vectors and reduce-sum the time dimension
-        #  this gives us word counts 
+        #  this gives us word counts
         # [B, T] -> [B, T, V] -> [B, V]
-        word_counts = F.one_hot(x, self.vocab_size).sum(1) 
+        word_counts = F.one_hot(x, self.vocab_size).sum(1)
         word_counts[:, self.pad_idx] = 0  # we could actually leave it here, it is a way to model length
         return word_counts.float()
 
     def forward(self, x, z, state=dict()) -> Poisson:
         """
-        Return Poisson distributions 
+        Return Poisson distributions
             c_v(X)|z, \Sigma_{<v} ~ Poisson(b_v(z, \Sigma_{<v}))
         with shape [B, Vx] where Vx = |\Sigma| and \Sigma is the vocabulary.
         """
         # We convert ids to V-dimensional one-hot vectors and sum the time dimension
-        #  this gives us word counts 
+        #  this gives us word counts
         # [B, V]
         counts = self.make_counts(x)
         if self.resample_every > 0:
@@ -212,7 +212,7 @@ class CorrelatedCategoricalsLM(GenerativeLM):
     where m = |x|.
     """
 
-    def __init__(self, embedder, latent_size, hidden_size, 
+    def __init__(self, embedder, latent_size, hidden_size,
             dropout, num_layers, cell_type, tied_embeddings, feed_z, gate_z):  #TODO implement gate_z
         super().__init__()
         self.embedder = embedder
@@ -225,13 +225,13 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         rnn_dropout = 0. if num_layers == 1 else dropout
         rnn_fn = rnn_creation_fn(cell_type)
         feed_z_size = latent_size if feed_z else 0
-        self.rnn = rnn_fn(embedder.embedding_dim + feed_z_size, hidden_size, 
+        self.rnn = rnn_fn(embedder.embedding_dim + feed_z_size, hidden_size,
             batch_first=True, dropout=rnn_dropout, num_layers=num_layers)
         self.tied_embeddings = tied_embeddings
         if not tied_embeddings:
             self.output_matrix = nn.Parameter(torch.randn(embedder.num_embeddings, hidden_size))
         self.dropout_layer = nn.Dropout(p=dropout)
-    
+
     def step(self, x_embed, hidden, z):
         rnn_input = x_embed.unsqueeze(1)
         if self.feed_z:
@@ -266,16 +266,16 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         """
         hidden = tile_rnn_hidden(self.init_layer(z), self.rnn)
         # [B, Tx, Vx]
-        logits = self.unroll(x, hidden=hidden, z=z) 
+        logits = self.unroll(x, hidden=hidden, z=z)
         return Categorical(logits=logits)
 
     def log_prob(self, likelihood: Categorical, x):
         # [B, Tx] -> [B]
-        return (likelihood.log_prob(x) * (x != self.pad_idx)).sum(-1)
+        return (likelihood.log_prob(x) * (x != self.pad_idx).float()).sum(-1)
 
 class GenerativeTM(nn.Module):
     """
-    The forward will return the likelihoods 
+    The forward will return the likelihoods
         Y_j|z,x, y_{<j}
     that is, a batch of sequences of torch distribution objects.
 
@@ -294,7 +294,7 @@ class GenerativeTM(nn.Module):
         seq_len_x: [B] length of source sequences
         y: [B, Ty] target token ids
         z: [B, Dz] stochastic embedding
-        state: use this dictionary to return something about the forward pass (for example, 
+        state: use this dictionary to return something about the forward pass (for example,
             attention weights, or other details of the computation that you whish to log)
         """
         raise NotImplementedError("Implement me!")
@@ -319,13 +319,13 @@ class IndependentTM(GenerativeTM):
     def __init__(self, latent_size, vocab_size, pad_idx):
         super().__init__()
         self.tgt_independent_lm = IndependentLM(
-            latent_size=latent_size, 
-            vocab_size=vocab_size, 
+            latent_size=latent_size,
+            vocab_size=vocab_size,
             pad_idx=pad_idx)
-    
+
     def forward(self, x, seq_mask_x, seq_len_x, y, z, state=dict()) -> Categorical:
         return self.tgt_independent_lm(y, z)
-    
+
     def log_prob(self, likelihood: Categorical, y):
         return self.tgt_independent_lm.log_prob(likelihood, y)
 
@@ -392,7 +392,7 @@ class CorrelatedCategoricalsTM(GenerativeTM):
     where n = |y|. Note that for now the parameterisation ignores x.
     """
 
-    def __init__(self, embedder, latent_size, hidden_size, 
+    def __init__(self, embedder, latent_size, hidden_size,
             dropout, num_layers, cell_type, tied_embeddings, feed_z, gate_z):
         super().__init__()
         self.correlated_categoricals_lm = CorrelatedCategoricalsLM(
@@ -476,12 +476,12 @@ class AttentionBasedTM(GenerativeTM):
             self.output_matrix = nn.Parameter(torch.randn(tgt_embedder.num_embeddings, decoder.hidden_size))
         self.dropout_layer = nn.Dropout(p=dropout)
         self.feed_z = feed_z
-    
+
     def src_embed(self, x):
         x_embed = self.src_embedder(x)
         x_embed = self.dropout_layer(x_embed)
         return x_embed
-    
+
     def tgt_embed(self, y):
         y_embed = self.tgt_embedder(y)
         y_embed = self.dropout_layer(y_embed)
@@ -524,5 +524,3 @@ class AttentionBasedTM(GenerativeTM):
 
     def log_prob(self, likelihood: Categorical, y):
         return (likelihood.log_prob(y) * (y != self.tgt_embedder.padding_idx).float()).sum(-1)
-
-

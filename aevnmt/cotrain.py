@@ -90,52 +90,44 @@ def create_model(hparams, vocab_src, vocab_tgt):
 
 
 def mono_vae_loss(
-        model, hparams, inputs, noisy_inputs, targets, seq_len, qz, z, KL_weight, step,
+        model, hparams, inputs, noisy_inputs, targets, seq_len,seq_mask,
+        inputs_shuf, noisy_inputs_shuf, targets_shuf, seq_len_shuf,seq_mask_shuf,
+        qz, z, KL_weight, step,
         state=dict(), writer=None, title="SenVAE"):
 
-    # [max_length, batch_size, vocab_size]
-    lm_logits = model.run_language_model(noisy_inputs, z)
-    # [batch_size, max_length, vocab_size]
-    lm_logits = lm_logits.permute(0, 2, 1)
-    log_prob = -F.cross_entropy(
-        lm_logits, targets, ignore_index=model.pad_idx, reduction="none").sum(dim=1)
+    tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(noisy_inputs, seq_mask, seq_len, None,
+    noisy_inputs_shuf,seq_mask_shuf,seq_len_shuf,
+    None,None,None,
+    z)
 
-    pz = model.prior()
-    KL = torch.distributions.kl.kl_divergence(qz, pz)
+    y_out=None
+    y_shuf_out=None
+    loss = model.loss(tm_likelihood, lm_likelihood, y_out, targets,y_shuf_out,targets_shuf, qz,
+                      free_nats=hparams.KL_free_nats,
+                      KL_weight=KL_weight,
+                      reduction="mean",
+                      aux_lm_likelihoods=aux_lm_likelihoods,
+                      aux_tm_likelihoods=aux_tm_likelihoods)
 
-    # [batch_size]
-    KL = torch.distributions.kl.kl_divergence(qz, pz)
-    raw_KL = KL * 1
-
-    #TODO: x side losses
-
-    #TODO: check consistency with AEVNMT
-    if hparams.KL_free_nats > 0:
-        KL = torch.clamp(KL, min=hparams.KL_free_nats)
-    KL *= KL_weight
-
-    terms = dict()
-    terms['raw_KL'] = raw_KL
-    terms['KL'] = KL
-    terms['LL'] = log_prob
-    terms['loss'] = -(log_prob - KL)
 
     if writer:
-        writer.add_scalar('%s/KL' % title, raw_KL.mean(), step)
-        writer.add_scalar('%s/LL' % title, log_prob.mean(), step)
-        writer.add_scalar('%s/ELBO' % title, (log_prob - raw_KL).mean(), step)
+        writer.add_scalar('%s/KL' % title, loss['raw_KL'].mean(), step)
+        writer.add_scalar('%s/LL' % title, (loss['lm/main']).mean(), step)
+        writer.add_scalar('%s/ELBO' % title, loss['ELBO'].mean(), step)
 
-    return terms
+    return loss
 
 
 def aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x, y_in, y_out, seq_mask_y, seq_len_y,step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="bilingual/xy", synthetic_x=False):
-    #TODO: create shuf inputs later
+
     x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=noisy_x_shuf_in=None
+    y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
 
     loss_terms = aevnmt_helper.train_step(
             model, x_in, x_out, seq_mask_x, seq_len_x, x_in,
             y_in, y_out, seq_mask_y, seq_len_y, y_in,
             x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in,
+            y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
             hparams,
             step, summary_writer=writer, synthetic_x=synthetic_x)
     loss=loss_terms["loss"]
@@ -156,7 +148,7 @@ def aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x, 
     lr_scheduler_step(lr_schedulers, hparams)
 
      # These are for logging, thus we use raw KL
-    ELBO = loss_terms['lm_log_likelihood'] + loss_terms['tm_log_likelihood'] - loss_terms['raw_KL']
+    ELBO = loss_terms['ELBO']
     ELBO = ELBO.mean()
     KL = loss_terms['raw_KL'].mean()
 
@@ -164,8 +156,8 @@ def aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x, 
         writer.add_scalar(f'{title}/loss', loss, step)
         # xy terms
         writer.add_scalar(f'{title}/ELBO', ELBO, step)
-        writer.add_scalar(f'{title}/LM', loss_terms['lm_log_likelihood'].mean(), step)
-        writer.add_scalar(f'{title}/TM', loss_terms['tm_log_likelihood'].mean(), step)
+        writer.add_scalar(f'{title}/LM', loss_terms['lm/main'].mean(), step)
+        writer.add_scalar(f'{title}/TM', loss_terms['tm/main'].mean(), step)
         writer.add_scalar(f'{title}/KL', KL, step)
 
     # Update statistics.
@@ -178,6 +170,7 @@ def aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x, 
 def senvae_monolingual_step_x(
         model,
         inputs, noisy_inputs, targets, seq_mask, seq_len,
+        inputs_shuf, noisy_inputs_shuf, targets_shuf, seq_mask_shuf, seq_len_shuf,
         step, optimizers, KL_weight,
         hparams, tracker, writer=None, title='SenVAE'):
 
@@ -191,16 +184,10 @@ def senvae_monolingual_step_x(
         for param_name, param_value in get_named_params(qz):
             writer.add_histogram("posterior-x/%s" % param_name, param_value, step)
 
-    # We will need to sample from q(x|z,y) where q(x|z,y) := p(x|z,y, theta_2)
-    #  thus we start by encoding (z,y) with theta_2
-    encoder_outputs, encoder_final = model.encode(noisy_inputs, seq_len, z)
-    hidden = model.init_decoder(encoder_outputs, encoder_final, z)
-
-    # We may update p(y|theta_2) on a SenVAE objective
-
     mono_vae_terms = mono_vae_loss(
         model=model, hparams=hparams,
-        inputs=inputs, noisy_inputs=noisy_inputs, targets=targets, seq_len=seq_len,
+        inputs=inputs, noisy_inputs=noisy_inputs, targets=targets, seq_len=seq_len,seq_mask=seq_mask,
+        inputs_shuf=inputs_shuf, noisy_inputs_shuf=noisy_inputs_shuf, targets_shuf=targets_shuf, seq_mask_shuf=seq_mask_shuf, seq_len_shuf=seq_len_shuf,
         qz=qz, z=z,
         KL_weight=KL_weight, step=step,
         writer=writer, title=title
@@ -219,7 +206,7 @@ def senvae_monolingual_step_x(
     optimizers['inf_z'].zero_grad()
 
     # Update statistics.
-    ELBO = (mono_vae_terms['LL'] - mono_vae_terms['raw_KL'])
+    ELBO = mono_vae_terms['ELBO']
     tracker.update('SenVAE/ELBO', ELBO.sum().item())
     tracker.update('num_tokens', seq_len.sum().item())
     tracker.update('num_sentences', inputs.size(0))
@@ -227,6 +214,7 @@ def senvae_monolingual_step_x(
 
 def aevnmt_monolingual_step(model, vocab_src,
                             y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
+                            y_shuf_in, _shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
                             hparams, step, device,
                             optimizers,lr_schedulers, KL_weight,
                             tracker: Tracker,
@@ -369,9 +357,18 @@ def train(model,
                     sentences_y = next(cycle_iterate_dl_y)
                     y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in = create_noisy_batch(
                         sentences_y, vocab_tgt, device, word_dropout=0.)  # TODO: should we use word dropout?
+
+                    if 'shuffled' in model.aux_tms:
+                        y_shuf_in, _shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
+                            sentences_y, vocab_tgt, device,
+                            word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                    else:
+                        y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
+
                     aevnmt_monolingual_step(
                         model, vocab_src,
                         y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
+                        y_shuf_in, _shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
                         hparams,
                         step=step_counter.step(),
                         device=device,
@@ -398,9 +395,17 @@ def train(model,
                 sentences_x = next(cycle_iterate_dl_x)
                 x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
                     sentences_x, vocab_src, device, word_dropout=hparams.word_dropout)  # TODO: should we use word dropout?
+
+                if 'shuffled' in model.aux_lms:
+                    x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
+                        sentences_x, vocab_src, device,
+                        word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                else:
+                    x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=noisy_x_shuf_in=None
+
                 senvae_monolingual_step_x(
-                    model=model, inputs=x_in, noisy_inputs=noisy_x_in, targets=x_out,
-                    seq_mask=seq_mask_x, seq_len=seq_len_x,
+                    model=model, inputs=x_in, noisy_inputs=noisy_x_in, targets=x_out,seq_mask=seq_mask_x, seq_len=seq_len_x,
+                    inputs_shuf=x_shuf_in, noisy_inputs_shuf=noisy_x_shuf_in, targets_shuf=x_shuf_out, seq_mask_shuf=seq_mask_x_shuf, seq_len_shuf=seq_len_x_shuf,
                     step=step_counter.step(),
                     optimizers=optimizers, KL_weight=KL_weight,
                     hparams=hparams,

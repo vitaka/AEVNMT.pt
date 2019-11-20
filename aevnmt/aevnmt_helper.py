@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 from aevnmt.data import BucketingParallelDataLoader, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
 from aevnmt.data import create_batch, batch_to_sentences
+from aevnmt.data.utils import create_noisy_batch
 from aevnmt.components import DetachedEmbeddingLayer, RNNEncoder, beam_search, greedy_decode, sampling_decode
 from aevnmt.models import AEVNMT
 from aevnmt.models.generative import GenerativeLM, IndependentLM, CorrelatedBernoullisLM
@@ -203,14 +204,19 @@ def create_model(hparams, vocab_src, vocab_tgt):
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
-               hparams, step, summary_writer=None):
+              x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in,
+              y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
+               hparams, step, summary_writer=None, synthetic_x=False):
 
     # Use q(z|x) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
     z = qz.rsample()
 
     # Compute the translation and language model logits.
-    tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in, z)
+    tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in,
+    noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
+    noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
+    z)
 
     # Do linear annealing of the KL over KL_annealing_steps if set.
     if hparams.KL_annealing_steps > 0:
@@ -218,12 +224,12 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     else:
         KL_weight = 1.
 
-    #TODO: only TL side losses if x is synthetic
     if synthetic_x:
-        lm_logits=None
+        lm_likelihood=None
+        aux_lm_likelihoods=dict()
 
     # Compute the loss.
-    loss = model.loss(tm_likelihood, lm_likelihood, y_out, x_out, qz,
+    loss = model.loss(tm_likelihood, lm_likelihood, y_out, x_out,y_shuf_out,x_shuf_out, qz,
                       free_nats=hparams.KL_free_nats,
                       KL_weight=KL_weight,
                       reduction="mean",
@@ -252,7 +258,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
                         shuffle=False, num_workers=4)
     val_dl = BucketingParallelDataLoader(val_dl)
 
-    val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device)
+    val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt,hparams, device)
     val_NLL = val_NLLs['joint/main']
     val_bleu, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
                                                   device, hparams)
@@ -312,6 +318,104 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl}
 
 
+def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None, use_reverse_lm=False, force_first_token=None):
+    model.eval()
+    with torch.no_grad():
+        if force_first_token is not None:
+            force_first_token=vocab_src[force_first_token]
+        x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
+        if input_sentences_y is not None:
+            y_in, _, seq_mask_y, seq_len_y = create_batch(input_sentences_y, vocab_tgt, device)
+
+        if z is None:
+            if use_prior:
+                qz=model.prior().expand((x_in.size(0),))
+            else:
+                if input_sentences_y is not None:
+                    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
+                else:
+                    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,None,None,None)
+            z = qz.mean if deterministic else qz.sample()
+        else:
+            z=z.to(x_in.device)
+
+
+        if not use_reverse_lm:
+            language_model= model.language_model
+        else:
+            language_model= model.language_model_rev
+        embed= model.src_embed
+        vocab= vocab_src
+
+
+        #if hparams.generate_homotopies:
+        if False:
+            NUM_STEPS=5
+            z2=qz.sample()
+            step=(z2-z)/NUM_STEPS
+
+            z_list=[]
+            for i in range(NUM_STEPS):
+                z_list.append(z+i*step)
+            z_list.append(z2)
+
+            raw_hypothesis_l=[]
+            for my_z in z_list:
+
+                hidden = model.init_lm(my_z)
+
+                if hparams.sample_decoding:
+                    raw_hypothesis_step = sampling_decode(language_model, embed,
+                                                   model.lm_generate, hidden,
+                                                   None, None,
+                                                   seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, my_z if hparams.feed_z else None, force_first_token=force_first_token)
+                elif hparams.beam_width <= 1:
+                    raw_hypothesis_step = greedy_decode(language_model, embed,
+                                                   model.lm_generate, hidden,
+                                                   None, None,
+                                                   seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                                   vocab[PAD_TOKEN], hparams.max_decoding_length,my_z if hparams.feed_z else None, force_first_token=force_first_token)
+                else:
+                    raw_hypothesis_step = beam_search(language_model, embed, model.lm_generate,
+                                                 vocab.size(), hidden, None,
+                                                 None, seq_mask_x,
+                                                 vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                                 vocab[PAD_TOKEN], hparams.beam_width,
+                                                 hparams.length_penalty_factor,
+                                                 hparams.max_decoding_length,hparams.n_best,my_z if hparams.feed_z else None, force_first_token=force_first_token)
+                raw_hypothesis_l.append(raw_hypothesis_step)
+
+            raw_hypothesis=torch.cat(raw_hypothesis_l,dim=1)
+
+
+        else:
+            hidden = model.init_lm(z)
+
+            if hparams.sample_decoding:
+                raw_hypothesis = sampling_decode(language_model, embed,
+                                               model.lm_generate, hidden,
+                                               None, None,
+                                               seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                               vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None, force_first_token=force_first_token)
+            elif hparams.beam_width <= 1:
+                raw_hypothesis = greedy_decode(language_model, embed,
+                                               model.lm_generate, hidden,
+                                               None, None,
+                                               seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                               vocab[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None, force_first_token=force_first_token)
+            else:
+                raw_hypothesis = beam_search(language_model, embed, model.lm_generate,
+                                             vocab.size(), hidden, None,
+                                             None, seq_mask_x,
+                                             vocab[SOS_TOKEN], vocab[EOS_TOKEN],
+                                             vocab[PAD_TOKEN], hparams.beam_width,
+                                             hparams.length_penalty_factor,
+                                             hparams.max_decoding_length,hparams.n_best,z if hparams.feed_z else None, force_first_token=force_first_token)
+
+    hypothesis = batch_to_sentences(raw_hypothesis, vocab)
+    return hypothesis,z
+
 def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True):
     # TODO: this code should be in the translation model class
     model.eval()
@@ -358,7 +462,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
                 z if hparams.feed_z else None)
 
     hypothesis = batch_to_sentences(raw_hypothesis, vocab_tgt)
-    return hypothesis
+    return hypothesis,z
 
 def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams):
     model.eval()
@@ -377,7 +481,7 @@ def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams):
     bleu = compute_bleu(model_hypotheses, references, subword_token=hparams.subword_token)
     return bleu, inputs, references, model_hypotheses
 
-def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
+def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device):
     model.eval()
     with torch.no_grad():
         num_predictions = 0
@@ -388,6 +492,13 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
         for sentences_x, sentences_y in val_dl:
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
             y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
+
+            x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
+                sentences_x, vocab_src, device,
+                word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+            y_shuf_in, _shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
+                sentences_y, vocab_tgt, device,
+                word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
 
             # Infer q(z|x) for this batch.
             qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
@@ -405,7 +516,10 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 z = qz.sample()
 
                 # Compute the logits according to this sample of z.
-                tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(x_in, seq_mask_x, seq_len_x, y_in, z)
+                tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(x_in, seq_mask_x, seq_len_x, y_in,
+                noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
+                noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
+                z)
 
                 # Compute log P(y|x, z_s)
                 log_tm_prob = model.translation_model.log_prob(tm_likelihood, y_out)
@@ -423,9 +537,9 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, device):
                 batch_log_marginals['tm/main'][s] = log_tm_prob + log_pz - log_qz
 
                 for aux_comp, aux_px_z in aux_lm_likelihoods.items():
-                    batch_log_marginals['lm/' + aux_comp][s] = model.log_likelihood_lm(aux_comp, aux_px_z, x_out) + log_pz - log_qz
+                    batch_log_marginals['lm/' + aux_comp][s] = model.log_likelihood_lm(aux_comp, aux_px_z,  x_shuf_out if aux_comp == "shuffled" else x_out) + log_pz - log_qz
                 for aux_comp, aux_py_xz in aux_tm_likelihoods.items():
-                    batch_log_marginals['tm/' + aux_comp][s] = model.log_likelihood_tm(aux_comp, aux_py_xz, y_out) + log_pz - log_qz
+                    batch_log_marginals['tm/' + aux_comp][s] = model.log_likelihood_tm(aux_comp, aux_py_xz, y_shuf_out if aux_comp == "shuffled" else y_out) + log_pz - log_qz
 
             for comp_name, log_marginals in batch_log_marginals.items():
                 # Average over all samples.
