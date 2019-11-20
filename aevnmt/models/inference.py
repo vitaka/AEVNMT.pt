@@ -286,8 +286,7 @@ class BasicInferenceModel(InferenceModel):
         super().__init__(latent_size)
         self.family = family
         self.encoder = encoder
-        #TODO: maybe this is not the cleanest solution..
-        self.encoder_y=encoder_y
+
         if family == "gaussian":
             self.conditioner = NormalLayer(encoder.output_size, hidden_size, latent_size)
         elif family == "kumaraswamy":
@@ -297,15 +296,11 @@ class BasicInferenceModel(InferenceModel):
 
     def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y) -> Distribution:
         # [B, D]
-        if x is None and self.encoder_y is not None:
-            #TODO: maybe this is not the cleanest solution..
-            outputs = self.encoder(y, seq_mask_y, seq_len_y,x, seq_mask_x, seq_len_x)
-        else:
-            outputs = self.encoder(x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y)
+        outputs = self.encoder(x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y)
         return self.conditioner(outputs)
 
     def parameters(self, recurse=True):
-        return chain(self.encoder.parameters(recurse=recurse), self.conditioner.parameters(recurse=recurse), self.encoder_y.parameters(recurse=recurse) if self.encoder_y is not None else iter(()) )
+        return chain(self.encoder.parameters(recurse=recurse), self.conditioner.parameters(recurse=recurse))
 
     def named_parameters(self, prefix='', recurse=True):
         return chain(self.encoder.named_parameters(prefix='', recurse=True), self.conditioner.named_parameters(prefix='', recurse=True), )
