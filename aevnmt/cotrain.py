@@ -167,7 +167,8 @@ step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="bilingual/xy
     tracker.update('num_tokens', (seq_len_x.sum() + seq_len_y.sum()).item())
     tracker.update('num_sentences', x_in.size(0))
 
-    step += 1
+    #I think is is no longer needed
+    #step += 1
 
 def senvae_monolingual_step_x(
         model,
@@ -214,7 +215,7 @@ def senvae_monolingual_step_x(
     tracker.update('num_sentences', inputs.size(0))
 
 
-def aevnmt_monolingual_step(model, vocab_src,
+def aevnmt_monolingual_step_y(model, vocab_src,
                             y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
                             y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,
                             hparams, step, device,
@@ -224,9 +225,7 @@ def aevnmt_monolingual_step(model, vocab_src,
                             writer=None,
                             gather_examples=None,
                             title='monolingual'):
-    # Infer q(z|y)
-    #TODO: name the 3 approximate posteriors
-    # q(z|y)
+
     qz = model.approximate_posterior(None,None,None,y_in, seq_mask_y, seq_len_y)
     # [B, dz]
     z = qz.rsample()
@@ -251,15 +250,71 @@ def aevnmt_monolingual_step(model, vocab_src,
         gather_examples['sampled_x'] = hypothesis
     x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
         hypothesis, vocab_src, device, word_dropout=0.)
-    
 
-    aevnmt_bilingual_step_xy(model, hparams,x_in, x_out, seq_mask_x, seq_len_x,
-    y_in, y_out, seq_mask_y, seq_len_y,
-    x_shuf_in=None, x_shuf_out=None, seq_mask_x_shuf=None, seq_len_x_shuf=None,
-    y_shuf_in=noisy_y_shuf_in, y_shuf_out=y_shuf_out, seq_mask_y_shuf=seq_mask_y_shuf, seq_len_y_shuf=seq_len_y_shuf,
-    step=step, optimizers=optimizers,lr_schedulers=lr_schedulers,KL_weight=KL_weight,tracker=tracker,writer=None,title="monolingual/y", synthetic_x=True)
+    # now we need to compute LM logprobs: synthetic_x is False
+    loss_terms = aevnmt_helper.train_step(
+            model, x_in, x_out, seq_mask_x, seq_len_x, x_in,
+            y_in, y_out, seq_mask_y, seq_len_y, y_in,
+            x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf,
+            y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf,
+            hparams,
+            step, summary_writer=writer, synthetic_x=False)
 
+    #KL
+    #tm/main
+    #lm/main
 
+    #shape: [B]
+
+    # log p(y|z(lambda),x,theta)
+    reward=loss_terms['tm/main']
+    logprob_x=loss_terms['lm/main'] #REINFORCE: logprob(x) under the policy
+
+    #grad_(lambda,theta) ( reward  )
+    ELBO= reward - loss_terms['KL']
+
+    if hparams.REINFORCE:
+        #sfe = score function estimator
+        # reward * grad_(lambda,theta) (log p(x|z(lambda),theta) ) [bakprop from sfe_surrogate gives me this]
+        sfe_surrogate = reward.detach() * logprob_x * hparams.REINFORCE_weight #default:1, TODO: try with small values
+        #TODO: maybe standardize reward
+    else:
+        sfe_surrogate = 0.0
+
+    objective = - ( ELBO + sfe_surrogate  ).mean()
+
+    # Backpropagate and update gradients.
+    objective.backward()
+    if hparams.max_gradient_norm > 0:
+        # TODO: do we need separate norms?
+        nn.utils.clip_grad_norm_(model.parameters(),
+                                 hparams.max_gradient_norm)
+    optimizers["gen"].step()
+    if "inf_z" in optimizers: optimizers["inf_z"].step()
+    # Zero the gradient buffer.
+    optimizers["gen"].zero_grad()
+    if "inf_z" in optimizers: optimizers["inf_z"].zero_grad()
+
+    # Update the learning rate scheduler if needed.
+    lr_scheduler_step(lr_schedulers, hparams)
+
+     # These are for logging, thus we use raw KL
+    ELBO = loss_terms['ELBO']
+    ELBO = ELBO.mean()
+    KL = loss_terms['raw_KL'].mean()
+
+    if writer:
+        writer.add_scalar(f'{title}/objective', objective, step)
+        # xy terms
+        writer.add_scalar(f'{title}/ELBO', ELBO, step)
+        writer.add_scalar(f'{title}/LM', loss_terms['lm/main'].mean(), step)
+        writer.add_scalar(f'{title}/TM', loss_terms['tm/main'].mean(), step)
+        writer.add_scalar(f'{title}/KL', KL, step)
+
+    # Update statistics.
+    tracker.update('ELBO', ELBO.item() * x_in.size(0))
+    tracker.update('num_tokens', (seq_len_x.sum() + seq_len_y.sum()).item())
+    tracker.update('num_sentences', x_in.size(0))
 
 def train(model,
           optimizers, lr_schedulers,
@@ -373,7 +428,7 @@ def train(model,
                     else:
                         y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
 
-                    aevnmt_monolingual_step(
+                    aevnmt_monolingual_step_y(
                         model, vocab_src,
                         y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
                         y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in,

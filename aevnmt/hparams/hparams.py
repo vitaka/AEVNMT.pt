@@ -111,7 +111,7 @@ options = {
     "posterior": (str, "gaussian", False, "Choose the family of the posterior approximation (gaussian, kumaraswamy)", 2),
     "inf_encoder_style": (str, "rnn", False, "The type of architecture: rnn|nli", 2),
     "inf_conditioning": (str, "x", False, "Conditioning context for q(z): x|xy", 2),
-    "inf3": (str, "", False, "Specify encoders for three different inference models, namely, q(z|x), q(z|y) and q(z|x,y), e.g. rnn,rnn,nli or rnn,rnn,comb. The special type 'comb' uses the other two encoders to make an encoding of the pair.", 2),  
+    "inf3": (str, "", False, "Specify encoders for three different inference models, namely, q(z|x), q(z|y) and q(z|x,y), e.g. rnn,rnn,nli or rnn,rnn,comb. The special type 'comb' uses the other two encoders to make an encoding of the pair.", 2),
     "inf3_comb_composition": (str, "cat", False, "Composition function used to combined encodings for q(z|x,y) if --inf3 is set", 2),
 
     # Decoding hyperparameters.
@@ -165,6 +165,9 @@ options = {
                                        " evaluation. If <= 0, evaluation will happen"
                                        " after every epoch.", 4),
     "criterion": (str, "bleu", False, "Criterion for convergence checks ('bleu' or 'likelihood')", 4),
+    "REINFORCE": (bool, False, False, "Use REINFORCE to propagate the gradients to the inference network when sampling an x.", 4),
+    "REINFORCE_weight": (float, 1.0, False, "Weight of SFE surrogate.", 4),
+
 
     # Translation hyperparameters.
     "translation_input_file": (str, None, False, "The translation input file,"
