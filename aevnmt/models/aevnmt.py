@@ -152,7 +152,8 @@ class AEVNMT(nn.Module):
         aux_lm_likelihoods = dict()
         for aux_name, aux_decoder in self.aux_lms.items():
             if aux_name == "shuffled":
-                aux_lm_likelihoods[aux_name] = aux_decoder(x_shuf, z)
+                if x_shuf is not None:
+                    aux_lm_likelihoods[aux_name] = aux_decoder(x_shuf, z)
             else:
                 aux_lm_likelihoods[aux_name] = aux_decoder(x, z)
 
@@ -163,7 +164,8 @@ class AEVNMT(nn.Module):
             for aux_name, aux_decoder in self.aux_tms.items():
                 if aux_name == "shuffled":
                     #Xs are ignored
-                    aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y_shuf, z)
+                    if y_shuf is not None:
+                        aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y_shuf, z)
                 else:
                     aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y, z)
 

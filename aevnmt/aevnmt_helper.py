@@ -74,12 +74,12 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
             cell_type=hparams.cell_type,
             tied_embeddings=hparams.tied_embeddings,
             feed_z=hparams.feed_z,
-            gate_z=False  # TODO implement
+            gate_z=hparams.gate_z
         )
     return lms
 
 
-def create_aux_translation_models(src_embedder, tgt_embedder, hparams) -> Dict[str, GenerativeTM]:
+def create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams) -> Dict[str, GenerativeTM]:
     tms = dict()
     if hparams.bow_loss_tl:
         tms['bow'] = IndependentTM(
@@ -105,6 +105,8 @@ def create_aux_translation_models(src_embedder, tgt_embedder, hparams) -> Dict[s
     if hparams.shuffle_lm_tl:  # TODO: implement shuffling
         tms['shuffled'] = CorrelatedCategoricalsTM(
             embedder=tgt_embedder,
+            sos_idx=vocab_tgt[SOS_TOKEN],
+            eos_idx=vocab_tgt[EOS_TOKEN],
             latent_size=hparams.latent_size,
             hidden_size=hparams.hidden_size,
             dropout=hparams.dropout,
@@ -112,7 +114,7 @@ def create_aux_translation_models(src_embedder, tgt_embedder, hparams) -> Dict[s
             cell_type=hparams.cell_type,
             tied_embeddings=hparams.tied_embeddings,
             feed_z=hparams.feed_z,
-            gate_z=False  # TODO implement
+            gate_z=hparams.gate_z
         )
     if hparams.ibm1_loss:
         tms['ibm1'] = IBM1TM(
@@ -242,7 +244,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
 
     # Auxiliary generative components
     aux_lms = create_aux_language_models(vocab_src, src_embedder, hparams)
-    aux_tms = create_aux_translation_models(src_embedder, tgt_embedder, hparams)
+    aux_tms = create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams)
 
     encoder = create_encoder(hparams)
     attention = create_attention(hparams)
@@ -592,7 +594,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device):
             x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
                 sentences_x, vocab_src, device,
                 word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
-            y_shuf_in, _shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
+            y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
                 sentences_y, vocab_tgt, device,
                 word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
 
