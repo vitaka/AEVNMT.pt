@@ -21,7 +21,7 @@ def ancestral_sample(decoder, tgt_embed_fn, generator_fn, hidden, encoder_output
     # Initialize the hidden state and create the initial input.
     batch_size = bsz
     prev_y = torch.full(size=[batch_size], fill_value=sos_idx, dtype=torch.long,
-                        device=decoder.embedder.weight.device)
+                        device=seq_mask_x.device)
 
     lm_decoding= (encoder_outputs is None  )
 
