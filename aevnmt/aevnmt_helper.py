@@ -288,7 +288,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
     # Use q(z|x) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
     z = qz.rsample()
- 
+
     # Compute the translation and language model logits.
     tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(noisy_x_in, seq_mask_x, seq_len_x, noisy_y_in,
     x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
@@ -370,7 +370,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
         print(f"- Reference: {r[0]}")
         for h in hs:
             print(f"- Translation: {h}")
-    
+
     # Write validation summaries.
     if summary_writer is not None:
         summary_writer.add_scalar(f"{title}/validation/BLEU", val_bleu, step)
@@ -425,7 +425,15 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
         embed= model.src_embed
         vocab= vocab_src
 
-
+        if hparams.sample_decoding:
+            raw_hypothesis=language_model.sample(z)
+        elif hparams.beam_width <= 1:
+            raw_hypothesis=language_model.sample(z, greedy=True)
+        else:
+            raise NotImplementedError
+        hypothesis = batch_to_sentences(raw_hypothesis, vocab)
+        return hypothesis,z
+################# OLD CODE ##############3333
         #if hparams.generate_homotopies:
         if False:
             NUM_STEPS=5
@@ -440,24 +448,24 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
             raw_hypothesis_l=[]
             for my_z in z_list:
 
-                hidden = model.init_lm(my_z)
+                hidden = model.language_model.init(my_z)
 
                 if hparams.sample_decoding:
                     raw_hypothesis_step = sampling_decode(language_model, embed,
-                                                   model.lm_generate, hidden,
-                                                   None, None,
+                                                   model.language_model.generate, hidden,
+                                                   None, None,z.size(0),
                                                    seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
                                                    vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, my_z if hparams.feed_z else None, force_first_token=force_first_token)
                 elif hparams.beam_width <= 1:
                     raw_hypothesis_step = greedy_decode(language_model, embed,
-                                                   model.lm_generate, hidden,
-                                                   None, None,
+                                                   model.language_model.generate, hidden,
+                                                   None, None,z.size(0),
                                                    seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
                                                    vocab[PAD_TOKEN], hparams.max_decoding_length,my_z if hparams.feed_z else None, force_first_token=force_first_token)
                 else:
-                    raw_hypothesis_step = beam_search(language_model, embed, model.lm_generate,
+                    raw_hypothesis_step = beam_search(language_model, embed, model.language_model.generate,
                                                  vocab.size(), hidden, None,
-                                                 None, seq_mask_x,
+                                                 None,z.size(0), seq_mask_x,
                                                  vocab[SOS_TOKEN], vocab[EOS_TOKEN],
                                                  vocab[PAD_TOKEN], hparams.beam_width,
                                                  hparams.length_penalty_factor,
@@ -468,24 +476,24 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
 
 
         else:
-            hidden = model.init_lm(z)
+            hidden = model.language_model.init(z)
 
             if hparams.sample_decoding:
                 raw_hypothesis = sampling_decode(language_model, embed,
-                                               model.lm_generate, hidden,
-                                               None, None,
+                                               model.language_model.generate, hidden,
+                                               None, None,z.size(0),
                                                seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
                                                vocab[PAD_TOKEN], hparams.max_decoding_length,hparams.sample_decoding_nucleus_p, z if hparams.feed_z else None, force_first_token=force_first_token)
             elif hparams.beam_width <= 1:
                 raw_hypothesis = greedy_decode(language_model, embed,
-                                               model.lm_generate, hidden,
-                                               None, None,
+                                               model.language_model.generate, hidden,
+                                               None, None,z.size(0),
                                                seq_mask_x, vocab[SOS_TOKEN], vocab[EOS_TOKEN],
                                                vocab[PAD_TOKEN], hparams.max_decoding_length,z if hparams.feed_z else None, force_first_token=force_first_token)
             else:
-                raw_hypothesis = beam_search(language_model, embed, model.lm_generate,
+                raw_hypothesis = beam_search(language_model, embed, model.language_model.generate,
                                              vocab.size(), hidden, None,
-                                             None, seq_mask_x,
+                                             None,z.size(0), seq_mask_x,
                                              vocab[SOS_TOKEN], vocab[EOS_TOKEN],
                                              vocab[PAD_TOKEN], hparams.beam_width,
                                              hparams.length_penalty_factor,
@@ -493,6 +501,8 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
 
     hypothesis = batch_to_sentences(raw_hypothesis, vocab)
     return hypothesis,z
+########## END OLD CODE ##############
+
 
 def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True):
     # TODO: this code should be in the translation model class
@@ -510,7 +520,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
 
         if hparams.sample_decoding:
             # TODO: we could use the new version below
-            #raw_hypothesis = model.translation_model.sample(x_in, seq_mask_x, seq_len_x, z, 
+            #raw_hypothesis = model.translation_model.sample(x_in, seq_mask_x, seq_len_x, z,
             #    max_len=hparams.max_decoding_length, greedy=False)
             raw_hypothesis = sampling_decode(
                 model.translation_model.decoder,
@@ -522,7 +532,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
                 z if hparams.feed_z else None)
         elif hparams.beam_width <= 1:
             # TODO: we could use the new version below
-            #raw_hypothesis = model.translation_model.sample(x_in, seq_mask_x, seq_len_x, z, 
+            #raw_hypothesis = model.translation_model.sample(x_in, seq_mask_x, seq_len_x, z,
             #    max_len=hparams.max_decoding_length, greedy=True)
             raw_hypothesis = greedy_decode(
                 model.translation_model.decoder,
