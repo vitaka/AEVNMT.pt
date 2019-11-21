@@ -251,6 +251,9 @@ def aevnmt_monolingual_step_y(model, vocab_src,
     x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
         hypothesis, vocab_src, device, word_dropout=0.)
 
+    #Enable train mode after sampling
+    model.train()
+    x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=None
     # now we need to compute LM logprobs: synthetic_x is False
     loss_terms = aevnmt_helper.train_step(
             model, x_in, x_out, seq_mask_x, seq_len_x, x_in,
