@@ -170,11 +170,9 @@ class AEVNMT(nn.Module):
         return tm_likelihood, lm_likelihood, state, aux_lm_likelihoods, aux_tm_likelihoods
 
     def log_likelihood_tm(self, comp_name, likelihood: Distribution, y):
-        # TODO: give special treatment to components that take shuffled inputs, e.g. if aux_decoder.shuffled_inputs: aux_lm_likelihoods[aux_name] = aux_decoder(x_shuff, z)
         return self.aux_tms[comp_name].log_prob(likelihood, y)
 
     def log_likelihood_lm(self, comp_name, likelihood: Distribution, x):
-        # TODO: give special treatment to components that take shuffled inputs, e.g. if aux_decoder.shuffled_inputs: aux_tm_likelihoods[aux_name] = aux_decoder(x, seq_mask_x, seq_len_x, y_shuff, z)
         return self.aux_lms[comp_name].log_prob(likelihood, x)
 
     def loss(self, tm_likelihood: Categorical, lm_likelihood: Categorical, targets_y, targets_x, targets_y_shuf, targets_x_shuf, qz: Distribution,
