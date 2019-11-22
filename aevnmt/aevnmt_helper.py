@@ -349,10 +349,12 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
 
     val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt,hparams, device)
     val_NLL = val_NLLs['joint/main']
-    val_bleu, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
+    if vocab_tgt is not None:
+        val_bleu, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
                                                   device, hparams)
+    else:
+        val_bleu=0.0
 
-    random_idx = np.random.choice(len(inputs))
     #nll_str = ' '.join('-- validation NLL {} = {:.2f}'.format(comp_name, comp_value)  for comp_name, comp_value in sorted(val_NLLs.items()))
     nll_str = f""
     # - log P(x|z) for the various source LM decoders
@@ -363,14 +365,22 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     for comp_name, comp_nll in sorted(val_NLLs.items()):
         if comp_name.startswith('tm/'):
             nll_str += f" -- {comp_name} = {comp_nll:,.2f}"
+
+    if vocab_tgt is not None:
+        random_idx = np.random.choice(len(inputs))
+        random_source=inputs[random_idx]
+        random_target=refs[random_idx]
+        random_prediction=hyps[random_idx]
+    else:
+        random_source=random_target=random_prediction=""
     print(f"direction = {title}\n"
           f"validation perplexity = {val_ppl:,.2f}"
           f" -- BLEU = {val_bleu:.2f}"
           f" -- KL = {val_KL:.2f}"
           f" {nll_str}\n"
-          f"- Source: {inputs[random_idx]}\n"
-          f"- Target: {refs[random_idx]}\n"
-          f"- Prediction: {hyps[random_idx]}")
+          f"- Source: {random_source}\n"
+          f"- Target: {random_target}\n"
+          f"- Prediction: {random_prediction}")
 
     if hparams.draw_translations > 0:
         random_idx = np.random.choice(len(inputs))
@@ -392,17 +402,18 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
             summary_writer.add_scalar(f"{title}/validation/NLL/{comp_name}", comp_value, step)
 
         # Log the attention weights of the first validation sentence.
-        with torch.no_grad():
-            val_sentence_x, val_sentence_y = val_data[0]
-            x_in, _, seq_mask_x, seq_len_x = create_batch([val_sentence_x], vocab_src, device)
-            y_in, y_out, seq_mask_y, seq_len_y = create_batch([val_sentence_y], vocab_tgt, device)
-            z = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y).sample()
-            _, _, state, _, _ = model(x_in, seq_mask_x, seq_len_x, y_in,None,None,None,
-            None,None,None, z)
-            att_weights = state['att_weights'].squeeze().cpu().numpy()
-        src_labels = batch_to_sentences(x_in, vocab_src, no_filter=True)[0].split()
-        tgt_labels = batch_to_sentences(y_out, vocab_tgt, no_filter=True)[0].split()
-        attention_summary(src_labels, tgt_labels, att_weights, summary_writer,
+        if vocab_tgt is not None:
+            with torch.no_grad():
+                val_sentence_x, val_sentence_y = val_data[0]
+                x_in, _, seq_mask_x, seq_len_x = create_batch([val_sentence_x], vocab_src, device)
+                y_in, y_out, seq_mask_y, seq_len_y = create_batch([val_sentence_y], vocab_tgt, device)
+                z = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y).sample()
+                _, _, state, _, _ = model(x_in, seq_mask_x, seq_len_x, y_in,None,None,None,
+                None,None,None, z)
+                att_weights = state['att_weights'].squeeze().cpu().numpy()
+            src_labels = batch_to_sentences(x_in, vocab_src, no_filter=True)[0].split()
+            tgt_labels = batch_to_sentences(y_out, vocab_tgt, no_filter=True)[0].split()
+            attention_summary(src_labels, tgt_labels, att_weights, summary_writer,
                           f"{title}/validation/attention", step)
 
     return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl}

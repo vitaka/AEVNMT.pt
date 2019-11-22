@@ -109,7 +109,7 @@ def load_vocabularies_senvae(hparams):
     else:
 
         if hparams.share_vocab:
-            assert not onlysl, "share_vocab not supported in monolingual mode"
+            assert False, "share_vocab not supported in monolingual mode"
         else:
             src_files = [train_src, val_src]
             vocab_src = Vocabulary.from_data(src_files, min_freq=hparams.vocab_min_freq,

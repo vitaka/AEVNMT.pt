@@ -270,8 +270,7 @@ def train(model,
                 # Print training stats every now and again.
                 if step_counter.step('x') % hparams.print_every == 0:
                     elapsed = time.time() - tokens_start
-                    num_tokens = tracker_x.sum('num_tokens') + tracker_y.sum('num_tokens')
-                    num_tokens += tracker_xy.sum('num_tokens')
+                    num_tokens = tracker_x.sum('num_tokens')
                     tokens_per_sec = num_tokens / elapsed if step_counter.step() != 0 else 0
                     print(f"({epoch_num}) step {step_counter.step()} "
                           f"x: {step_counter.step('x')} "
