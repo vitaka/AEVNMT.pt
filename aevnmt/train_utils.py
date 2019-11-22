@@ -105,7 +105,11 @@ def load_vocabularies_senvae(hparams):
 
     # Construct the vocabularies.
     if hparams.vocab_prefix is not None:
-        assert False, "vocab_prefix not supported"
+        if hparams.share_vocab:
+            assert False, "share_vocab not supported in monolingual mode"
+        else:
+            vocab_src_file = f"{hparams.vocab_prefix}.{hparams.src}"
+            vocab_src = Vocabulary.from_file(vocab_src_file, max_size=hparams.max_vocab_size)
     else:
 
         if hparams.share_vocab:
