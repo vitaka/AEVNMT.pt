@@ -6,7 +6,7 @@ import time
 from aevnmt.hparams import Hyperparameters
 from aevnmt.data import TextDataset, RawInputTextDataset, remove_subword_tokens, postprocess
 from aevnmt.train import create_model
-from aevnmt.train_utils import load_vocabularies, compute_bleu
+from aevnmt.train_utils import load_vocabularies,load_vocabularies_senvae, compute_bleu
 from aevnmt.data.datasets import InputTextDataset
 from aevnmt.data.textprocessing import SentenceSplitter
 from aevnmt.data.textprocessing import Pipeline
@@ -21,9 +21,9 @@ from pathlib import Path
 class TranslationEngine:
 
     def __init__(self, hparams):
-        senVAE=False
+        self.senVAE=False
         if hparams.src == hparams.tgt:
-            senVAE=True
+            self.senVAE=True
 
         output_dir = Path(hparams.output_dir)
         verbose = hparams.verbose
