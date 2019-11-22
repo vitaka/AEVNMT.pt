@@ -8,7 +8,7 @@ import numpy as np
 from torch.distributions import Normal
 from torch.utils.data import DataLoader
 
-from aevnmt.data import BucketingParallelDataLoader, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
+from aevnmt.data import BucketingParallelDataLoader,BucketingTextDataLoader, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
 from aevnmt.data import create_batch, batch_to_sentences
 from aevnmt.data.utils import create_noisy_batch
 from aevnmt.components import DetachedEmbeddingLayer, RNNEncoder, beam_search, greedy_decode, sampling_decode
@@ -228,7 +228,9 @@ def create_inference_model(src_embedder, tgt_embedder, hparams) -> InferenceMode
 def create_model(hparams, vocab_src, vocab_tgt):
     # Generative components
     src_embedder = torch.nn.Embedding(vocab_src.size(), hparams.emb_size, padding_idx=vocab_src[PAD_TOKEN])
-    tgt_embedder = torch.nn.Embedding(vocab_tgt.size(), hparams.emb_size, padding_idx=vocab_tgt[PAD_TOKEN])
+    tgt_embedder=None
+    if vocab_tgt is not None:
+        tgt_embedder = torch.nn.Embedding(vocab_tgt.size(), hparams.emb_size, padding_idx=vocab_tgt[PAD_TOKEN])
 
     language_model = CorrelatedCategoricalsLM(
         embedder=src_embedder,
@@ -246,23 +248,26 @@ def create_model(hparams, vocab_src, vocab_tgt):
 
     # Auxiliary generative components
     aux_lms = create_aux_language_models(vocab_src, src_embedder, hparams)
-    aux_tms = create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams)
+    aux_tms = dict()
+    translation_model=None
 
-    encoder = create_encoder(hparams)
-    attention = create_attention(hparams)
-    decoder = create_decoder(attention, hparams)
-    translation_model = AttentionBasedTM(
-        src_embedder=src_embedder,
-        tgt_embedder=tgt_embedder,
-        tgt_sos_idx=vocab_tgt[SOS_TOKEN],
-        tgt_eos_idx=vocab_tgt[EOS_TOKEN],
-        encoder=encoder,
-        decoder=decoder,
-        latent_size=hparams.latent_size,
-        dropout=hparams.dropout,
-        feed_z=hparams.feed_z,
-        tied_embeddings=hparams.tied_embeddings
-    )
+    if tgt_embedder is not None:
+        aux_tms = create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams)
+        encoder = create_encoder(hparams)
+        attention = create_attention(hparams)
+        decoder = create_decoder(attention, hparams)
+        translation_model = AttentionBasedTM(
+            src_embedder=src_embedder,
+            tgt_embedder=tgt_embedder,
+            tgt_sos_idx=vocab_tgt[SOS_TOKEN],
+            tgt_eos_idx=vocab_tgt[EOS_TOKEN],
+            encoder=encoder,
+            decoder=decoder,
+            latent_size=hparams.latent_size,
+            dropout=hparams.dropout,
+            feed_z=hparams.feed_z,
+            tied_embeddings=hparams.tied_embeddings
+        )
 
     inf_model = create_inference_model(src_embedder, tgt_embedder, hparams)
 
@@ -337,7 +342,10 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     # Create the validation dataloader. We can just bucket.
     val_dl = DataLoader(val_data, batch_size=hparams.batch_size,
                         shuffle=False, num_workers=4)
-    val_dl = BucketingParallelDataLoader(val_dl)
+    if vocab_tgt is not None:
+        val_dl = BucketingParallelDataLoader(val_dl)
+    else:
+        val_dl = BucketingTextDataLoader(val_dl)
 
     val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt,hparams, device)
     val_NLL = val_NLLs['joint/main']
@@ -588,17 +596,27 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device):
         total_KL = 0.
         n_samples = 10
         for sentences_tuple in val_dl:
-            sentences_x, sentences_y = sentences_tuple
+            if vocab_tgt is not None:
+                sentences_x, sentences_y = sentences_tuple
+            else:
+                sentences_x = sentences_tuple
+                sentences_y = None
 
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
-            y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
-
             x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
                 sentences_x, vocab_src, device,
                 word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
-            y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
-                sentences_y, vocab_tgt, device,
-                word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+
+
+            if vocab_tgt is not None:
+                y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
+                y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
+                    sentences_y, vocab_tgt, device,
+                    word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+            else:
+                y_in=y_out=seq_mask_y=seq_len_y=None
+                y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
+
 
             # Infer q(z|x) for this batch.
             qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
@@ -622,7 +640,10 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device):
                 z)
 
                 # Compute log P(y|x, z_s)
-                log_tm_prob = model.translation_model.log_prob(tm_likelihood, y_out)
+                if  model.translation_model is not None:
+                    log_tm_prob = model.translation_model.log_prob(tm_likelihood, y_out)
+                else:
+                    log_tm_prob = 0.0
 
                 # Compute log P(x|z_s)
                 log_lm_prob = model.language_model.log_prob(lm_likelihood, x_out)
@@ -647,7 +668,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device):
                 log_marginal[comp_name] = log_marginal[comp_name] + batch_avg.sum().item()
 
             num_sentences += batch_size
-            num_predictions += (seq_len_x.sum() + seq_len_y.sum()).item()
+            num_predictions += (seq_len_x.sum() + (seq_len_y.sum() if seq_len_y is not None else 0.0 ) ).item()
 
     val_NLL = -log_marginal['joint/main']
     val_perplexity = np.exp(val_NLL / num_predictions)

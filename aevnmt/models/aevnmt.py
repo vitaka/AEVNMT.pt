@@ -103,7 +103,10 @@ class AEVNMT(nn.Module):
         return chain(self.src_embedder.parameters(), self.language_model.parameters())
 
     def tm_parameters(self):
-        return chain(self.tgt_embedder.parameters(), self.translation_model.parameters())
+        if self.tgt_embedder is not None:
+            return chain(self.tgt_embedder.parameters(), self.translation_model.parameters())
+        else:
+            return iter(())
 
     def approximate_posterior(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y):
         """

@@ -64,7 +64,6 @@ def load_vocabularies(hparams):
 
     # Construct the vocabularies.
     if hparams.vocab_prefix is not None:
-
         if hparams.share_vocab:
             vocab = Vocabulary.from_file(hparams.vocab_prefix, max_size=hparams.max_vocab_size)
             vocab_src = vocab
@@ -99,6 +98,24 @@ def load_vocabularies(hparams):
                                              max_size=hparams.max_vocab_size)
 
     return vocab_src, vocab_tgt
+
+def load_vocabularies_senvae(hparams):
+    train_src = f"{hparams.mono_src}"
+    val_src = f"{hparams.validation_prefix}.{hparams.src}"
+
+    # Construct the vocabularies.
+    if hparams.vocab_prefix is not None:
+        assert False, "vocab_prefix not supported"
+    else:
+
+        if hparams.share_vocab:
+            assert not onlysl, "share_vocab not supported in monolingual mode"
+        else:
+            src_files = [train_src, val_src]
+            vocab_src = Vocabulary.from_data(src_files, min_freq=hparams.vocab_min_freq,
+                                             max_size=hparams.max_vocab_size)
+    return vocab_src
+
 
 def create_encoder(hparams):
     if hparams.encoder_style == "rnn":
