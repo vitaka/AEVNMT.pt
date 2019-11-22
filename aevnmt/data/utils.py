@@ -19,7 +19,6 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
     :returns: a batch of padded inputs, a batch of padded outputs, mask, lengths
     """
 
-    #TODO: shuffle while keeping BPE fragments togeher?
     if shuffle_toks:
         if full_words_shuf:
             sentences=[    " ".join(np.random.permutation(s.replace("@@ ","@@").split(" "))).replace("@@","@@ ")  for s in sentences  ]

@@ -17,6 +17,8 @@ from aevnmt.dist import NormalLayer, KumaraswamyLayer
 from aevnmt.components import RNNEncoder, TransformerEncoder
 from aevnmt.components import DecomposableAttentionEncoder
 
+import numpy as np
+
 
 class InferenceEncoder(nn.Module):
     """
@@ -312,7 +314,9 @@ class SwitchingInferenceModel(InferenceModel):
     """
 
     def __init__(self, model_x: InferenceModel, model_y: InferenceModel, model_xy: InferenceModel):
-        assert model_x.latent_size == model_y.latent_size == model_xy.latent_size, 'Different latent sizes'
+        assert model_x.latent_size == model_y.latent_size, 'Different latent sizes'
+        if model_xy is not None:
+            assert model_x.latent_size == model_xy.latent_size, 'Different latent sizes'
         super().__init__(model_x.latent_size)
         self.model_x = model_x
         self.model_y = model_y
@@ -320,7 +324,14 @@ class SwitchingInferenceModel(InferenceModel):
 
     def forward(self, x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y) -> Distribution:
         if x is not None and y is not None:
-            return self.model_xy(x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y)
+            if self.model_xy is not None:
+                return self.model_xy(x, seq_mask_x, seq_len_x, y, seq_mask_y, seq_len_y)
+            else:
+                #Sample which model to use
+                if np.random.random() < 0.5:
+                    return self.model_x(x, seq_mask_x, seq_len_x, None, None, None)
+                else:
+                    return self.model_y(None, None, None, y, seq_mask_y, seq_len_y)
         elif x is not None and y is None:
             return self.model_x(x, seq_mask_x, seq_len_x, None, None, None)
         elif y is not None and x is None:
@@ -329,7 +340,7 @@ class SwitchingInferenceModel(InferenceModel):
             raise ValueError('I cannot perform inferences from nothing')
 
     def parameters(self, recurse=True):
-        return chain(self.model_x.parameters(recurse=recurse), self.model_y.parameters(recurse=recurse), self.model_xy.parameters(recurse=recurse))
+        return chain(self.model_x.parameters(recurse=recurse), self.model_y.parameters(recurse=recurse), self.model_xy.parameters(recurse=recurse) if self.model_xy is not None else iter(()))
 
     def named_parameters(self, prefix='', recurse=True):
-        return chain(self.model_x.named_parameters(prefix='conditioning_x', recurse=True), self.model_y.named_parameters(prefix='conditioning_y', recurse=True), self.model_xy.named_parameters(prefix='conditioning_xy', recurse=True))
+        return chain(self.model_x.named_parameters(prefix='conditioning_x', recurse=True), self.model_y.named_parameters(prefix='conditioning_y', recurse=True), self.model_xy.named_parameters(prefix='conditioning_xy', recurse=True) if self.model_xy is not None else iter(()))

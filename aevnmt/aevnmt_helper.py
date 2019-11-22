@@ -187,6 +187,8 @@ def create_inference_model(src_embedder, tgt_embedder, hparams) -> InferenceMode
             composition="maxpool" if hparams.max_pooling_states else "avg")
         if enc_styles[2] == 'comb':
             encoder_xy = combine_inference_encoders(encoder_x, encoder_y, hparams.inf3_comb_composition)
+        elif enc_styles[2] == 'none':
+            encoder_xy = None
         else:
             encoder_xy = get_inference_encoder(
                 encoder_style=enc_styles[2],
@@ -218,7 +220,7 @@ def create_inference_model(src_embedder, tgt_embedder, hparams) -> InferenceMode
                 family=hparams.posterior,
                 latent_size=hparams.latent_size,
                 hidden_size=hparams.hidden_size,
-                encoder=encoder_xy),
+                encoder=encoder_xy) if encoder_xy is not None else None,
             )
     return inf_model
 
