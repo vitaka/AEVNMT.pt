@@ -21,6 +21,9 @@ from pathlib import Path
 class TranslationEngine:
 
     def __init__(self, hparams):
+        senVAE=False
+        if hparams.src == hparams.tgt:
+            senVAE=True
 
         output_dir = Path(hparams.output_dir)
         verbose = hparams.verbose
@@ -28,6 +31,7 @@ class TranslationEngine:
         if hparams.vocab_prefix is None:
             hparams.vocab_prefix = output_dir / "vocab"
             hparams.share_vocab = False
+
 
         # Select the correct device (GPU or CPU).
         device = torch.device("cuda:0") if hparams.use_gpu else torch.device("cpu")
@@ -112,7 +116,11 @@ class TranslationEngine:
         if self.verbose:
             t0 = time.time()
             print(f"Loading vocabularies src={self.hparams.src} tgt={self.hparams.tgt}", file=sys.stderr)
-        self.vocab_src, self.vocab_tgt = load_vocabularies(self.hparams)
+        if self.senVAE:
+            self.vocab_tgt=None
+            self.vocab_src = load_vocabularies_senvae(self.hparams)
+        else:
+            self.vocab_src, self.vocab_tgt = load_vocabularies(self.hparams)
 
         # Load pre/post processing models and configure a pipeline
         self.pipeline = TranslationEngine.make_pipeline(self.hparams)
