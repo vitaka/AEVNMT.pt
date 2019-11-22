@@ -196,7 +196,7 @@ def senvae_monolingual_step_x(
         writer=writer, title=title
     )
     negative_elbo = mono_vae_terms['loss']
-    negative_elbo.mean().backward(retain_graph=True)
+    negative_elbo.backward()
 
     if hparams.max_gradient_norm > 0:
         nn.utils.clip_grad_norm_(parameters=model.lm_parameters(),

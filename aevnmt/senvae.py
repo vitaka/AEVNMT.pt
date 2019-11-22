@@ -146,7 +146,7 @@ def senvae_monolingual_step_x(
         writer=writer, title=title
     )
     negative_elbo = mono_vae_terms['loss']
-    negative_elbo.mean().backward(retain_graph=True)
+    negative_elbo.backward()
 
     if hparams.max_gradient_norm > 0:
         nn.utils.clip_grad_norm_(parameters=model.lm_parameters(),
@@ -155,6 +155,7 @@ def senvae_monolingual_step_x(
 
     optimizers['gen'].step()
     optimizers['inf_z'].step()
+    
     optimizers['gen'].zero_grad()
     optimizers['inf_z'].zero_grad()
 
@@ -237,7 +238,7 @@ def train(model,
 
             # Do linear annealing of the KL over KL_annealing_steps if set.
             if hparams.KL_annealing_steps > 0:
-                KL_weight = min(1., (1.0 / hparams.KL_annealing_steps) * step_counter.step('xy'))
+                KL_weight = min(1., (1.0 / hparams.KL_annealing_steps) * step_counter.step('x'))
 
             if batch_type == 'x':  # source monolingual batch
                 sentences_x = next(cycle_iterate_dl_x)
