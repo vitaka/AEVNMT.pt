@@ -195,7 +195,8 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
         epoch_num += 1
 
     print(f"Finished training.")
-    summary_writer.close()
+    if summary_writer is not None:
+        summary_writer.close()
 
     # Load the best model and run validation again, make sure to not write
     # summaries.

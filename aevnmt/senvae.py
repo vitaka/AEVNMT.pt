@@ -295,7 +295,8 @@ def train(model,
         epoch_num += 1
 
     print(f"Finished training.")
-    summary_writer.close()
+    if summary_writer is not None:
+        summary_writer.close()
 
     # Load the best model and run validation again, make sure to not write
     # summaries.
