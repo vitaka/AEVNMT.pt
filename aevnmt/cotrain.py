@@ -360,8 +360,11 @@ def train(model,
         bucketing_dl_y = BucketingTextDataLoader(dl_y)
         cycle_iterate_dl_y = cycle(bucketing_dl_y)
 
-    # Keep track of some stuff in TensorBoard.
-    summary_writer = SummaryWriter(log_dir=str(out_dir))
+    if hparams.disable_tensorboard:
+        summary_writer =None
+    else:
+        # Keep track of some stuff in TensorBoard.
+        summary_writer = SummaryWriter(log_dir=str(out_dir))
 
     # Time, epoch, steps
     tokens_start = time.time()

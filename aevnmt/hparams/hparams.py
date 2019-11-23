@@ -196,6 +196,7 @@ options = {
 
     "curriculum": (str, "xy", False, "x (source monolingual), y (target monolingual), xy|yx (bilingual), bwd|fwd (synthetic bilingual)", 6),
     "warmup": (int, 1, False, "Focus on supervised objectives for a number of epochs", 6),
+    "disable_tensorboard": (bool, False, False, "Disables logging data for TensorBoard. Saves disk space.", 6),
 }
 
 class Hyperparameters:

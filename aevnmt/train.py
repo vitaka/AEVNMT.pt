@@ -63,8 +63,11 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
     # Save the best model based on development BLEU.
     ckpt = CheckPoint(model_dir=out_dir/"model", metrics=['bleu', 'likelihood'])
 
-    # Keep track of some stuff in TensorBoard.
-    summary_writer = SummaryWriter(log_dir=str(out_dir))
+    if hparams.disable_tensorboard:
+        summary_writer =None
+    else:
+        # Keep track of some stuff in TensorBoard.
+        summary_writer = SummaryWriter(log_dir=str(out_dir))
 
     # Define training statistics to keep track of.
     tokens_start = time.time()

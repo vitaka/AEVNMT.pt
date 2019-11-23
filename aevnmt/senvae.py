@@ -155,7 +155,7 @@ def senvae_monolingual_step_x(
 
     optimizers['gen'].step()
     optimizers['inf_z'].step()
-    
+
     optimizers['gen'].zero_grad()
     optimizers['inf_z'].zero_grad()
 
@@ -193,8 +193,11 @@ def train(model,
         num_workers=4)
     bucketing_dl_x = BucketingTextDataLoader(dl_x)  # n=1 to synchronise with dl_yx
 
-    # Keep track of some stuff in TensorBoard.
-    summary_writer = SummaryWriter(log_dir=str(out_dir))
+    if hparams.disable_tensorboard:
+        summary_writer =None
+    else:
+        # Keep track of some stuff in TensorBoard.
+        summary_writer = SummaryWriter(log_dir=str(out_dir))
 
     # Time, epoch, steps
     tokens_start = time.time()
