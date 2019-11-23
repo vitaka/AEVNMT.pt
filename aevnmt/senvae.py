@@ -209,7 +209,7 @@ def train(model,
     cycle_iterate_dl_x = cycle(bucketing_dl_x)
 
     # Manage checkpoints (depends on training phase)
-    ckpt = CheckPoint(model_dir=out_dir, metrics=['bleu', 'likelihood'])
+    ckpt = CheckPoint(model_dir=out_dir/"model", metrics=['bleu', 'likelihood'])
 
     # Define the evaluation function.
     def run_evaluation(step,writer=summary_writer):

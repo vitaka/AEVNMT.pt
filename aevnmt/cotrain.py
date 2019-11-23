@@ -385,7 +385,7 @@ def train(model,
     cycle_curriculum = cycle(curriculum)
 
     # Manage checkpoints (depends on training phase)
-    ckpt = CheckPoint(model_dir=out_dir, metrics=['bleu', 'likelihood'])
+    ckpt = CheckPoint(model_dir=out_dir/"model", metrics=['bleu', 'likelihood'])
 
     # Define the evaluation function.
     def run_evaluation(step,writer=summary_writer):
