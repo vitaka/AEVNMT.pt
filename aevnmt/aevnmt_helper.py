@@ -541,7 +541,7 @@ def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, det
 
         # For translation we use the approximate posterior mean.
         qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,
-                y=x_in, seq_mask_y=seq_mask_x, seq_len_y=seq_len_x) # TODO: here we need a prediction net!
+                y=None, seq_mask_y=None, seq_len_y=None) # TODO: here we need a prediction net!
         z = qz.mean if deterministic else qz.sample()
 
         encoder_outputs, encoder_final = model.translation_model.encode(x_in, seq_len_x, z)
