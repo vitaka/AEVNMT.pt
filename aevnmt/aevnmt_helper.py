@@ -429,14 +429,20 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
             y_in, _, seq_mask_y, seq_len_y = create_batch(input_sentences_y, vocab_tgt, device)
 
         if z is None:
-            if use_prior:
-                qz=model.prior().expand((x_in.size(0),))
-            else:
-                if input_sentences_y is not None:
-                    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
+            if model.prior_family == "mog" and use_prior:
+                if deterministic:
+                    raise NotImplementedError
                 else:
-                    qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,None,None,None)
-            z = qz.mean if deterministic else qz.sample()
+                    z=torch.stack([model.prior().sample() for i in range(x_in.size(0))])
+            else:
+                if use_prior:
+                    qz=model.prior().expand((x_in.size(0),))
+                else:
+                    if input_sentences_y is not None:
+                        qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,y_in, seq_mask_y, seq_len_y)
+                    else:
+                        qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,None,None,None)
+                z = qz.mean if deterministic else qz.sample()
         else:
             z=z.to(x_in.device)
 
