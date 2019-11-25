@@ -433,7 +433,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
                 if deterministic:
                     raise NotImplementedError
                 else:
-                    z=torch.stack([model.prior().sample() for i in range(x_in.size(0))])
+                    z=model.prior().sample(torch.Size([ x_in.size(0) ]))
             else:
                 if use_prior:
                     qz=model.prior().expand((x_in.size(0),))
