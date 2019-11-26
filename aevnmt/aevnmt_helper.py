@@ -53,7 +53,7 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
             hidden_sizes=[hparams.hidden_size, hparams.hidden_size],  # TODO: generalise
             pad_idx=src_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
-            resample_mask_every=10)  # TODO: generalise
+            resample_mask_every=hparams.MADE_resample_mask_every,normalize_weight=hparams.MADE_normalize_weight_num_preds)  # TODO: generalise
     if hparams.count_MADE_loss:
         lms['count_made'] = CorrelatedPoissonsLM(
             vocab_size=src_embedder.num_embeddings,
@@ -61,7 +61,7 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
             hidden_sizes=[hparams.hidden_size, hparams.hidden_size],  # TODO: generalise
             pad_idx=src_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
-            resample_mask_every=10)  # TODO: generalise
+            resample_mask_every=hparams.MADE_resample_mask_every,normalize_weight=hparams.MADE_normalize_weight_num_preds)  # TODO: generalise
     if hparams.shuffle_lm:  # TODO: implement shuffling
         lms['shuffled'] = CorrelatedCategoricalsLM(
             embedder=src_embedder,
@@ -93,7 +93,7 @@ def create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams)
             hidden_sizes=[hparams.hidden_size, hparams.hidden_size],
             pad_idx=tgt_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
-            resample_mask_every=10)  # TODO: generalise
+            resample_mask_every=hparams.MADE_resample_mask_every,normalize_weight=hparams.MADE_normalize_weight_num_preds)  # TODO: generalise
     if hparams.count_MADE_loss_tl:
         tms['count_made'] = CorrelatedPoissonsTM(
             vocab_size=tgt_embedder.num_embeddings,
@@ -101,7 +101,7 @@ def create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams)
             hidden_sizes=[hparams.hidden_size, hparams.hidden_size],
             pad_idx=tgt_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
-            resample_mask_every=10)  # TODO: generalise
+            resample_mask_every=hparams.MADE_resample_mask_every,normalize_weight=hparams.MADE_normalize_weight_num_preds)  # TODO: generalise
     if hparams.shuffle_lm_tl:  # TODO: implement shuffling
         tms['shuffled'] = CorrelatedCategoricalsTM(
             embedder=tgt_embedder,

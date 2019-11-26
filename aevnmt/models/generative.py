@@ -108,8 +108,9 @@ class CorrelatedBernoullisLM(GenerativeLM):
     where V is the vocabulary size and b(z,x) \in (0, 1)^V is autoregressive in x (we use a MADE).
     """
 
-    def __init__(self, vocab_size, latent_size, hidden_sizes, pad_idx, num_masks=10, resample_mask_every=10):
+    def __init__(self, vocab_size, latent_size, hidden_sizes, pad_idx, num_masks=10, resample_mask_every=10,normalize_weight=False):
         super().__init__()
+        self.normalize_weight=normalize_weight
         self.pad_idx = pad_idx
         self.resample_every = resample_mask_every
         self.counter = resample_mask_every
@@ -184,8 +185,9 @@ class CorrelatedPoissonsLM(GenerativeLM):
     and b(z,x) \in (0, infty)^V is autoregressive in x (we use a MADE).
     """
 
-    def __init__(self, vocab_size, latent_size, hidden_sizes, pad_idx, num_masks=10, resample_mask_every=10):
+    def __init__(self, vocab_size, latent_size, hidden_sizes, pad_idx, num_masks=10, resample_mask_every=10,normalize_weight=False):
         super().__init__()
+        self.normalize_weight=normalize_weight
         self.pad_idx = pad_idx
         self.resample_every = resample_mask_every
         self.counter = resample_mask_every
@@ -419,7 +421,7 @@ class CorrelatedBernoullisTM(GenerativeTM):
     Note that for now the parameterisation ignores x.
     """
 
-    def __init__(self, vocab_size, latent_size, hidden_sizes, pad_idx, num_masks=10, resample_mask_every=10):
+    def __init__(self, vocab_size, latent_size, hidden_sizes, pad_idx, num_masks=10, resample_mask_every=10,normalize_weight=False):
         super().__init__()
         self.correlated_bernoullis_lm = CorrelatedBernoullisLM(
             vocab_size=vocab_size,
@@ -427,8 +429,11 @@ class CorrelatedBernoullisTM(GenerativeTM):
             hidden_sizes=hidden_sizes,
             pad_idx=pad_idx,
             num_masks=num_masks,
-            resample_mask_every=resample_mask_every
+            resample_mask_every=resample_mask_every,
+            normalize_weight=normalize_weight
         )
+        self.normalize_weight=normalize_weight
+        self.vocab_size=vocab_size
 
     def forward(self, x, seq_mask_x, seq_len_x, y, z, state=dict()) -> Bernoulli:
         return self.correlated_bernoullis_lm(y, z)
@@ -451,15 +456,18 @@ class CorrelatedPoissonsTM(GenerativeTM):
     Note that for now the parameterisation ignores x.
     """
 
-    def __init__(self, vocab_size, latent_size, hidden_sizes, pad_idx, num_masks=10, resample_mask_every=10):
+    def __init__(self, vocab_size, latent_size, hidden_sizes, pad_idx, num_masks=10, resample_mask_every=10,normalize_weight=False):
         super().__init__()
+        self.normalize_weight=normalize_weight
+        self.vocab_size=vocab_size
         self.correlated_poissons_lm = CorrelatedPoissonsLM(
             vocab_size=vocab_size,
             latent_size=latent_size,
             hidden_sizes=hidden_sizes,
             pad_idx=pad_idx,
             num_masks=num_masks,
-            resample_mask_every=resample_mask_every
+            resample_mask_every=resample_mask_every,
+            normalize_weight=normalize_weight
         )
 
     def forward(self, x, seq_mask_x, seq_len_x, y, z, state=dict()) -> Poisson:

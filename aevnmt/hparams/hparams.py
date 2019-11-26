@@ -87,6 +87,8 @@ options = {
     "MADE_loss_tl":(bool, False, False, "Add TL MADE term to the loss", 1),
     "count_MADE_loss":(bool, False, False, "Add SL count MADE term to the loss", 1),
     "count_MADE_loss_tl":(bool, False, False, "Add TL count MADE term to the loss", 1),
+    "MADE_resample_mask_every": (int, 10, False, "Resample MADE mask every this forward passes.", 1),
+    "MADE_normalize_weight_num_preds":(bool, False, False, "Normalize MADE weight: multiply loss by num_predictions_lm/num_predictions_MADE", 1),
     "shuffle_lm":(bool, False, False, "z is also used to produce source sentences with a shuffled LM instead of a reverse LM", 1),
     "shuffle_lm_tl":(bool, False, False, "z is also used to produce target sentences with a shuffled LM instead of a reverse LM", 1),
     "shuffle_lm_keep_bpe":(bool, False, False, "Shuffle whole words instead of BPE fragments.", 1),
@@ -120,7 +122,7 @@ options = {
                                   " greedy decoding", 3),
     "length_penalty_factor": (float, 1.0, False, "Length penalty factor (alpha) for"
                                                  " beam search decoding.", 3),
-    "sample_decoding": (bool, False, False, "When decoding, sample instead of searching for the translation with maximum probability.", 3),
+    "sample_decoding": (bool, False, False, "When decgding, sample instead of searching for the translation with maximum probability.", 3),
     "re_generate_sl": (bool, False, False, "When decoding, use SL LM instead of translation model.", 3),
     "sample_prior_decoding": (int, 0, False, "When translating/generating SL with AEVNMT, sample this number of sentences from the prior and ignore the posterior.", 3),
 

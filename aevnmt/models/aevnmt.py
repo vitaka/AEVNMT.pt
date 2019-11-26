@@ -233,6 +233,9 @@ class AEVNMT(nn.Module):
         side_lm_likelihood = torch.zeros([len(aux_lm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
         for c, (aux_name, aux_likelihood) in enumerate(aux_lm_likelihoods.items()):
             out_dict['lm/' + aux_name] = self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuf if aux_name == "shuffled" else targets_x )
+            w=1.0
+            if hasattr(self.aux_lms[aux_name],'normalize_weight') and self.aux_lms[aux_name].normalize_weight:
+                w=targets_x.size(1)/(1.0*self.aux_lms[aux_name].vocab_size)
             side_lm_likelihood[c] = out_dict['lm/' + aux_name]
 
         # Alternative views of p(y|z,x)
@@ -242,7 +245,10 @@ class AEVNMT(nn.Module):
         if targets_y is not None:
             for c, (aux_name, aux_likelihood) in enumerate(aux_tm_likelihoods.items()):
                 out_dict['tm/' + aux_name] = self.log_likelihood_tm(aux_name, aux_likelihood, targets_y_shuf if aux_name == "shuffled" else targets_y)
-                side_tm_likelihood[c] = out_dict['tm/' + aux_name]
+                w=1.0
+                if hasattr(self.aux_tms[aux_name],'normalize_weight') and self.aux_tms[aux_name].normalize_weight:
+                    w=targets_y.size(1)/(1.0*self.aux_tms[aux_name].vocab_size)
+                side_tm_likelihood[c] = out_dict['tm/' + aux_name]*w
 
         if not self.mixture_likelihood:
             # ELBO
