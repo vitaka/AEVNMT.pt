@@ -94,9 +94,11 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             bleu=metrics['bleu'], likelihood=metrics['likelihood']
         )
 
+
+    shuffle_dict_sl=dict()
+    shuffle_dict_tl=dict()
     # Start the training loop.
     while (epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience):
-
         # Train for 1 epoch.
         for sentences_tuple in bucketing_dl:
             sentences_x, sentences_y =sentences_tuple
@@ -113,14 +115,14 @@ def train(model, optimizers, lr_schedulers, training_data, val_data, vocab_src,
             if 'shuffled' in model.aux_lms:
                 x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
                     sentences_x, vocab_src, device,
-                    word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                    word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe, shuffle_dict=shuffle_dict_sl if hparams.shuffle_lm_keep_epochs else None)
             else:
                 x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=noisy_x_shuf_in=None
 
             if 'shuffled' in model.aux_tms:
                 y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
                     sentences_y, vocab_tgt, device,
-                    word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                    word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,shuffle_dict=shuffle_dict_tl if hparams.shuffle_lm_keep_epochs else None)
             else:
                 y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
 

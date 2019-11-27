@@ -231,6 +231,7 @@ def train(model,
     # Some statistics for training
     tracker_x = Tracker(hparams.print_every)
 
+    shuffle_dict_sl=dict()
     # Start the training loop.
     KL_weight = 1.
     while (epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience):
@@ -251,7 +252,7 @@ def train(model,
                 if 'shuffled' in model.aux_lms:
                     x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
                         sentences_x, vocab_src, device,
-                        word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                        word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,shuffle_dict=shuffle_dict_sl if hparams.shuffle_lm_keep_epochs else None)
                 else:
                     x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=noisy_x_shuf_in=None
 

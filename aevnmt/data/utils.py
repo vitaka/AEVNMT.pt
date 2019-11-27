@@ -6,7 +6,7 @@ import sys
 from .constants import UNK_TOKEN, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
 
 
-def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=True, shuffle_toks=False,full_words_shuf=False):
+def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=True, shuffle_toks=False,full_words_shuf=False,shuffle_dict=None):
     """
     Converts a list of sentences to a padded batch of word ids. Returns
     an input batch, an output batch shifted by one, a sequence mask over
@@ -21,9 +21,33 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
 
     if shuffle_toks:
         if full_words_shuf:
-            sentences=[    " ".join(np.random.permutation(s.replace("@@ ","@@").split(" "))).replace("@@","@@ ")  for s in sentences  ]
+            if shuffle_dict is not None:
+                new_sentences=[]
+                for s in sentences:
+                    splits=s.replace("@@ ","@@").split(" ")
+                    if s in shuffle_dict:
+                        perm_indexes=shuffle_dict[s]
+                    else:
+                        perm_indexes=np.random.permutation(len(splits))
+                        shuffle_dict[s]=perm_indexes
+                    new_sentences.append( " ".join(np.array(splits)[ perm_indexes ]).replace("@@","@@ ")  )
+                sentences=new_sentences
+            else:
+                sentences=[ " ".join(np.random.permutation(s.replace("@@ ","@@").split(" "))).replace("@@","@@ ")  for s in sentences  ]
         else:
-            sentences=[  " ".join(np.random.permutation(s.split(" "))) for s in sentences  ]
+            if shuffle_dict is not None:
+                new_sentences=[]
+                for s in sentences:
+                    splits=s.split(" ")
+                    if s in shuffle_dict:
+                        perm_indexes=shuffle_dict[s]
+                    else:
+                        perm_indexes=np.random.permutation(len(splits))
+                        shuffle_dict[s]=perm_indexes
+                    new_sentences.append( " ".join(np.array(splits)[ perm_indexes ])  )
+                sentences=new_sentences
+            else:
+                sentences=[  " ".join(np.random.permutation(s.split(" "))) for s in sentences  ]
 
     # sentences is a list of np arrays with int64 in it
     if map_to_ids:
