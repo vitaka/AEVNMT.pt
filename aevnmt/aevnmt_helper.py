@@ -533,16 +533,19 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
 ########## END OLD CODE ##############
 
 
-def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True):
+def translate(model, input_sentences, vocab_src, vocab_tgt, device, hparams, deterministic=True,z=None):
     # TODO: this code should be in the translation model class
     model.eval()
     with torch.no_grad():
         x_in, _, seq_mask_x, seq_len_x = create_batch(input_sentences, vocab_src, device)
 
-        # For translation we use the approximate posterior mean.
-        qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,
-                y=None, seq_mask_y=None, seq_len_y=None) # TODO: here we need a prediction net!
-        z = qz.mean if deterministic else qz.sample()
+        if z is None:
+            # For translation we use the approximate posterior mean.
+            qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x,
+                    y=None, seq_mask_y=None, seq_len_y=None) # TODO: here we need a prediction net!
+            z = qz.mean if deterministic else qz.sample()
+        else:
+            z=z.to(x_in.device)
 
         encoder_outputs, encoder_final = model.translation_model.encode(x_in, seq_len_x, z)
         hidden = model.translation_model.init_decoder(encoder_outputs, encoder_final, z)
