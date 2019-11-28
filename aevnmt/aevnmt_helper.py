@@ -347,6 +347,8 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     else:
         val_dl = BucketingTextDataLoader(val_dl)
 
+    if hparams.log_KL_x_post_prior_length > 0:
+        _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt,hparams,step, summary_writer, device,target_len=hparams.log_KL_x_post_prior_length)
     val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt,hparams, device)
     val_NLL = val_NLLs['joint/main']
     if vocab_tgt is not None:
@@ -696,6 +698,74 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device):
     NLLs = {comp_name: -value / num_sentences for comp_name, value in log_marginal.items()}
 
     return val_perplexity, total_KL/num_sentences, NLLs
+
+
+def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, step, summary_writer,device,target_len):
+    model.eval()
+    with torch.no_grad():
+        num_predictions = 0
+        num_sentences = 0
+        log_marginal = defaultdict(float)
+        total_KL = 0.
+        n_samples = 10
+        for sentences_tuple in val_dl:
+
+            if vocab_tgt is not None:
+                sentences_x, sentences_y = sentences_tuple
+            else:
+                sentences_x = sentences_tuple
+                sentences_y = None
+
+            x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
+            x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
+                sentences_x, vocab_src, device,
+                word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+
+            bsz=x_in.size(0)
+
+            if vocab_tgt is not None:
+                y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
+                y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
+                    sentences_y, vocab_tgt, device,
+                    word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+            else:
+                y_in=y_out=seq_mask_y=seq_len_y=None
+                y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
+
+
+            # Infer q(z|x) for this batch.
+            qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
+            pz = model.prior()
+
+            # We are not doing importance sampling at the moment
+
+            zposterior=qz.sample()
+            zprior=torch.stack([pz.sample() for i in range(x_in.size(0))])
+
+            # Compute the logits according to the posterior sample of z.
+            tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(x_in, seq_mask_x, seq_len_x, y_in,
+            noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
+            noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
+            zposterior)
+
+            # Compute the logits according to the prior sample of z.
+            tm_likelihood_prior, lm_likelihood_prior, _, aux_lm_likelihoods_prior, aux_tm_likelihoods_prior = model(x_in, seq_mask_x, seq_len_x, y_in,
+            noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
+            noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
+            zprior)
+
+            #Compute and print KLs per timestep
+            KLpostprior=torch.distributions.kl.kl_divergence(tm_likelihood, tm_likelihood_prior)
+            KLpriorpost=torch.distributions.kl.kl_divergence(tm_likelihood_prior, tm_likelihood)
+            #print(KLpostprior)
+            #print(KLpriorpost)
+
+            if x_in.size(1) == target_len:
+                for i in range(bsz):
+                    #Discard sentences with padding
+                    if torch.sum( y_out[i] == model.tgt_embedder.pad_idx ) == 0:
+                        summary_writer.add_histogram('val-y/KLpriorpost',KLpriorpost[i],step)
+                        summary_writer.add_histogram('val-y/KLpostprior',KLpostprior[i],step)
 
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
