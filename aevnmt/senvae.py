@@ -219,14 +219,15 @@ def train(model,
         metrics = validate(model, val_data, vocab_src, None, device,
                             hparams, step, summary_writer=writer)
 
-        # Update the learning rate scheduler.
-        lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
+        if not epoch_num <= hparams.side_losses_warmup:
+            # Update the learning rate scheduler.
+            lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
 
-        ckpt.update(
-            epoch_num, step, {f"{hparams.src}-{hparams.tgt}": model},
-            # we save with respect to BLEU and likelihood
-            bleu=metrics['bleu'], likelihood=metrics['likelihood']
-        )
+            ckpt.update(
+                epoch_num, step, {f"{hparams.src}-{hparams.tgt}": model},
+                # we save with respect to BLEU and likelihood
+                bleu=metrics['bleu'], likelihood=metrics['likelihood']
+            )
 
     # Some statistics for training
     tracker_x = Tracker(hparams.print_every)
@@ -234,7 +235,7 @@ def train(model,
     shuffle_dict_sl=dict()
     # Start the training loop.
     KL_weight = 1.
-    while (epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience):
+    while (epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience ):
         waiting = nb_bilingual_batches
         while waiting:
             batch_type = 'x'
