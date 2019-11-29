@@ -200,6 +200,7 @@ options = {
     "curriculum": (str, "xy", False, "x (source monolingual), y (target monolingual), xy|yx (bilingual), bwd|fwd (synthetic bilingual)", 6),
     "warmup": (int, 1, False, "Focus on supervised objectives for a number of epochs", 6),
     "side_losses_warmup": (int, 0, False, "Optimize only side losses for a number of epochs", 6),
+    "disable_side_losses_after_warmup": (bool, False, False, "Train only main objective after side losses warmup", 6),
     "disable_tensorboard": (bool, False, False, "Disables logging data for TensorBoard. Saves disk space.", 6),
     "log_KL_x_post_prior_length": (int, 0, False, "Log KL between p(x|x<i,z) when z has been sampled from the posterior or sampled from the prior for sentences with this length. 0 disables logging.", 6),
 }

@@ -95,7 +95,7 @@ def mono_vae_loss(
         model, hparams, inputs, noisy_inputs, targets, seq_len,seq_mask,
         inputs_shuf, noisy_inputs_shuf, targets_shuf, seq_len_shuf,seq_mask_shuf,
         qz, z, KL_weight, step,
-        state=dict(), writer=None, title="SenVAE", disable_main_loss=False):
+        state=dict(), writer=None, title="SenVAE", disable_main_loss=False,disable_side_losses=False):
 
     tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(noisy_inputs, seq_mask, seq_len, None,
     noisy_inputs_shuf,seq_mask_shuf,seq_len_shuf,
@@ -109,7 +109,7 @@ def mono_vae_loss(
                       KL_weight=KL_weight,
                       reduction="mean",
                       aux_lm_likelihoods=aux_lm_likelihoods,
-                      aux_tm_likelihoods=aux_tm_likelihoods, disable_main_loss=disable_main_loss)
+                      aux_tm_likelihoods=aux_tm_likelihoods, disable_main_loss=disable_main_loss,disable_side_losses=disable_side_losses)
 
 
     if writer:
@@ -125,7 +125,7 @@ def senvae_monolingual_step_x(
         inputs, noisy_inputs, targets, seq_mask, seq_len,
         inputs_shuf, noisy_inputs_shuf, targets_shuf, seq_mask_shuf, seq_len_shuf,
         step, optimizers, KL_weight,
-        hparams, tracker, writer=None, title='SenVAE',disable_main_loss=False):
+        hparams, tracker, writer=None, title='SenVAE',disable_main_loss=False,disable_side_losses=False):
 
     # Infer q(z|x)
     qz = model.approximate_posterior(inputs, seq_mask, seq_len,None,None,None)
@@ -143,7 +143,7 @@ def senvae_monolingual_step_x(
         inputs_shuf=inputs_shuf, noisy_inputs_shuf=noisy_inputs_shuf, targets_shuf=targets_shuf, seq_mask_shuf=seq_mask_shuf, seq_len_shuf=seq_len_shuf,
         qz=qz, z=z,
         KL_weight=KL_weight, step=step,
-        writer=writer, title=title, disable_main_loss=disable_main_loss
+        writer=writer, title=title, disable_main_loss=disable_main_loss, disable_side_losses=disable_side_losses
     )
     negative_elbo = mono_vae_terms['loss']
     negative_elbo.backward()
@@ -265,7 +265,7 @@ def train(model,
                     hparams=hparams,
                     tracker=tracker_x,
                     writer=summary_writer if step_counter.step('x') % hparams.print_every == 0 else None,
-                    title="mono_src/SenVAE", disable_main_loss=epoch_num <= hparams.side_losses_warmup
+                    title="mono_src/SenVAE", disable_main_loss=epoch_num <= hparams.side_losses_warmup, disable_side_losses =(epoch_num > hparams.side_losses_warmup and hparams.disable_side_losses_after_warmup)
                 )
                 step_counter.count('x')
 
