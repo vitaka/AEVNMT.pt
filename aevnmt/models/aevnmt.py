@@ -181,7 +181,7 @@ class AEVNMT(nn.Module):
         return self.aux_lms[comp_name].log_prob(likelihood, x)
 
     def loss(self, tm_likelihood: Categorical, lm_likelihood: Categorical, targets_y, targets_x, targets_y_shuf, targets_x_shuf, qz: Distribution,
-            free_nats=0., KL_weight=1., reduction="mean", aux_lm_likelihoods=dict(), aux_tm_likelihoods=dict()):
+            free_nats=0., KL_weight=1., reduction="mean", aux_lm_likelihoods=dict(), aux_tm_likelihoods=dict(),disable_main_loss=False):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -258,12 +258,17 @@ class AEVNMT(nn.Module):
             elbo = tm_log_likelihood + lm_log_likelihood - KL
             # we sum the alternative views (as in multitask learning)
             aux_log_likelihood = side_lm_likelihood.sum(0) + side_tm_likelihood.sum(0)
+            if disable_main_loss:
+                elbo = - KL
+
             loss = - (elbo + aux_log_likelihood)
+
             # main log-likelihoods
             out_dict['lm/main'] = lm_log_likelihood
             out_dict['tm/main'] = tm_log_likelihood
             out_dict['ELBO']=elbo
         else:
+            assert disable_main_loss == False
             # ELBO uses mixture models for X|z and Y|z,x:
             #  E_q[ \log P(x|z) + \log P(y|z,x)] - KL(q(z) || p(z))
             #   where \log P(x|z)   = \log \sum_{c=1}^{Cy} w_c P(x|z,c)
