@@ -211,6 +211,12 @@ def train(model,
     # Manage checkpoints (depends on training phase)
     ckpt = CheckPoint(model_dir=out_dir/"model", metrics=['bleu', 'likelihood'])
 
+    only_side_losses_phase=False
+    if hparams.side_losses_warmup_convergence_patience > 0:
+        only_side_losses_phase=True
+    side_losses_vals=[]
+
+
     # Define the evaluation function.
     def run_evaluation(step,writer=summary_writer):
         # Perform model validation, keep track of validation BLEU for model
@@ -219,7 +225,11 @@ def train(model,
         metrics = validate(model, val_data, vocab_src, None, device,
                             hparams, step, summary_writer=writer)
 
-        if not epoch_num <= hparams.side_losses_warmup:
+        side_losses_vals.append(metrics['side_NLL'])
+        if hparams.side_losses_warmup_convergence_patience > 0 only_side_losses_phase and min(side_losses_vals) not in side_losses_vals[-hparams.side_losses_warmup_convergence_patience:]:
+            only_side_losses_phase=False
+
+        if (not epoch_num <= hparams.side_losses_warmup) and not only_side_losses_phase:
             # Update the learning rate scheduler.
             lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
 
@@ -265,7 +275,7 @@ def train(model,
                     hparams=hparams,
                     tracker=tracker_x,
                     writer=summary_writer if step_counter.step('x') % hparams.print_every == 0 else None,
-                    title="mono_src/SenVAE", disable_main_loss=epoch_num <= hparams.side_losses_warmup, disable_side_losses =(epoch_num > hparams.side_losses_warmup and hparams.disable_side_losses_after_warmup)
+                    title="mono_src/SenVAE", disable_main_loss=(epoch_num <= hparams.side_losses_warmup or only_side_losses_phase), disable_side_losses =((epoch_num > hparams.side_losses_warmup or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup)
                 )
                 step_counter.count('x')
 
