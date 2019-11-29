@@ -754,18 +754,15 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
             noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
             zprior)
 
-            #Compute and print KLs per timestep
-            KLpostprior=torch.distributions.kl.kl_divergence(tm_likelihood, tm_likelihood_prior)
-            KLpriorpost=torch.distributions.kl.kl_divergence(tm_likelihood_prior, tm_likelihood)
-            #print(KLpostprior)
-            #print(KLpriorpost)
 
             if x_in.size(1) == target_len:
                 for i in range(bsz):
                     #Discard sentences with padding
-                    if torch.sum( y_out[i] == model.tgt_embedder.pad_idx ) == 0:
-                        summary_writer.add_histogram('val-y/KLpriorpost',KLpriorpost[i],step)
-                        summary_writer.add_histogram('val-y/KLpostprior',KLpostprior[i],step)
+                    if torch.sum( y_out[i] == model.tgt_embedder.padding_idx ) == 0:
+                        KLpostprior=torch.distributions.kl.kl_divergence(torch.distributions.Categorical(tm_likelihood.logits[i]),  torch.distributions.Categorical(tm_likelihood_prior.logits[i]))
+                        KLpriorpost=torch.distributions.kl.kl_divergence( torch.distributions.Categorical(tm_likelihood_prior.logits[i]), torch.distributions.Categorical(tm_likelihood.logits[i]))
+                        summary_writer.add_histogram('val-y/KLpriorpost',KLpriorpost,step)
+                        summary_writer.add_histogram('val-y/KLpostprior',KLpostprior,step)
 
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
