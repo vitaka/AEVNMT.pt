@@ -218,7 +218,7 @@ def train(model,
 
 
     # Define the evaluation function.
-    def run_evaluation(step,writer=summary_writer):
+    def run_evaluation(step,only_side_losses_phase,writer=summary_writer):
         # Perform model validation, keep track of validation BLEU for model
         # selection.
         model.eval()
@@ -226,7 +226,7 @@ def train(model,
                             hparams, step, summary_writer=writer)
 
         side_losses_vals.append(metrics['side_NLL'])
-        if hparams.side_losses_warmup_convergence_patience > 0 only_side_losses_phase and min(side_losses_vals) not in side_losses_vals[-hparams.side_losses_warmup_convergence_patience:]:
+        if hparams.side_losses_warmup_convergence_patience > 0 and only_side_losses_phase and min(side_losses_vals) not in side_losses_vals[-hparams.side_losses_warmup_convergence_patience:]:
             only_side_losses_phase=False
 
         if (not epoch_num <= hparams.side_losses_warmup) and not only_side_losses_phase:
@@ -238,6 +238,7 @@ def train(model,
                 # we save with respect to BLEU and likelihood
                 bleu=metrics['bleu'], likelihood=metrics['likelihood']
             )
+        return only_side_losses_phase
 
     # Some statistics for training
     tracker_x = Tracker(hparams.print_every)
@@ -266,7 +267,7 @@ def train(model,
                         word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,shuffle_dict=shuffle_dict_sl if hparams.shuffle_lm_keep_epochs else None)
                 else:
                     x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=noisy_x_shuf_in=None
-
+                
                 senvae_monolingual_step_x(
                     model=model, inputs=x_in, noisy_inputs=noisy_x_in, targets=x_out,seq_mask=seq_mask_x, seq_len=seq_len_x,
                     inputs_shuf=x_shuf_in, noisy_inputs_shuf=noisy_x_shuf_in, targets_shuf=x_shuf_out, seq_mask_shuf=seq_mask_x_shuf, seq_len_shuf=seq_len_x_shuf,
@@ -275,13 +276,15 @@ def train(model,
                     hparams=hparams,
                     tracker=tracker_x,
                     writer=summary_writer if step_counter.step('x') % hparams.print_every == 0 else None,
-                    title="mono_src/SenVAE", disable_main_loss=(epoch_num <= hparams.side_losses_warmup or only_side_losses_phase), disable_side_losses =((epoch_num > hparams.side_losses_warmup or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup)
+                    title="mono_src/SenVAE", 
+                    disable_main_loss=( (epoch_num <= hparams.side_losses_warmup) or only_side_losses_phase), 
+                    disable_side_losses =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup)
                 )
                 step_counter.count('x')
 
                 # Run evaluation every evaluate_every steps if set (always after a bilingual batch)
                 if hparams.evaluate_every > 0 and step_counter.step('x') % hparams.evaluate_every == 0:
-                    run_evaluation(step_counter.step())
+                    only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase)
 
                 # Print training stats every now and again.
                 if step_counter.step('x') % hparams.print_every == 0:
@@ -302,7 +305,7 @@ def train(model,
 
         # If evaluate_every is not set, we evaluate after every epoch.
         if hparams.evaluate_every <= 0:
-            run_evaluation(step_counter.step())
+            only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase)
 
         epoch_num += 1
 
@@ -314,7 +317,7 @@ def train(model,
     # summaries.
     best_model_info = ckpt.load_best({f"{hparams.src}-{hparams.tgt}": model}, hparams.criterion)
     print(f"Loaded best model (wrt {hparams.criterion}) found at step {best_model_info['step']} (epoch {best_model_info['epoch']}).")
-    run_evaluation(step_counter.step(), writer=None)
+    run_evaluation(step_counter.step(),only_side_losses_phase, writer=None)
 
 
 def main():
