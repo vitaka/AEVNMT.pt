@@ -231,13 +231,15 @@ def train(model,
 
         if (not epoch_num <= hparams.side_losses_warmup) and not only_side_losses_phase:
             # Update the learning rate scheduler.
-            lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
+            cooldown=lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
 
             ckpt.update(
                 epoch_num, step, {f"{hparams.src}-{hparams.tgt}": model},
                 # we save with respect to BLEU and likelihood
                 bleu=metrics['bleu'], likelihood=metrics['likelihood']
             )
+            if cooldown:
+                ckpt.cooldown_happened()
         return only_side_losses_phase
 
     # Some statistics for training
@@ -246,7 +248,7 @@ def train(model,
     shuffle_dict_sl=dict()
     # Start the training loop.
     KL_weight = 1.
-    while (epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience ):
+    while (epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience and ckpt.cooldowns < hparams.cooldown_patience ):
         waiting = nb_bilingual_batches
         while waiting:
             batch_type = 'x'

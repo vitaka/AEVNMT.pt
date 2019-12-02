@@ -284,6 +284,7 @@ class CheckPoint:
 
     def __init__(self, model_dir: Path, metrics: list):
         self._metrics = metrics
+        self.cooldowns=0
         self._data = {metric: {
             "value": -float('inf'),
             "step": 0,
@@ -294,7 +295,8 @@ class CheckPoint:
         } for metric in metrics}
         for data in self._data.values():
             data["dir"].mkdir(parents=True, exist_ok=True)
-
+    def cooldown_happened(self):
+        self.cooldown+=1
     def change_model_dir(self, model_dir: Path):
         for metric, data in self._data.items():
             data["dir"] = model_dir/metric

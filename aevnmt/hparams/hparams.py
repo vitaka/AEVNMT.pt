@@ -161,6 +161,7 @@ options = {
     "lr_warmup": (int, 4000, False, "Learning rate warmup (noam_scheduler)", 4),
     "patience": (int, 5, False, "The number of evaluations to continue training for"
                                 " when an improvement has been found.", 4),
+    "cooldown_patience": (int, 5, False, "Maximum number of LR cooldowns allowed.", 4),
     "dropout": (float, 0., False, "The amount of dropout.", 4),
     "word_dropout": (float, 0., False, "Fraction of input words to drop.", 4),
     "KL_free_nats": (float, 0., False, "KL = min(KL_free_nats, KL)", 4),

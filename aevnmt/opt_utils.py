@@ -112,6 +112,7 @@ def lr_scheduler_step(lr_schedulers, hparams, val_score=None):
     Only updates if it's appropriate for the scheduler. I.e. it updates the LRonPLateauScheduler
     only during validation, and the NoamScheduler only during training.
     """
+    cooldown=False
     for name, lr_scheduler in lr_schedulers.items():
 
         if isinstance(lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
@@ -124,6 +125,7 @@ def lr_scheduler_step(lr_schedulers, hparams, val_score=None):
             if lr_scheduler.cooldown_counter == hparams.lr_reduce_cooldown:
                 print(f"Reduced the learning rate for '{name}' with a factor"
                       f" {hparams.lr_reduce_cooldown}")
+                cooldown=True
 
         if isinstance(lr_scheduler, NoamScheduler):
 
@@ -131,6 +133,7 @@ def lr_scheduler_step(lr_schedulers, hparams, val_score=None):
             if val_score is not None:
                 continue
             lr_scheduler.step()
+    return cooldown
 
 def take_optimizer_step(optimizer, parameters, clip_grad_norm=0., zero_grad=True):
     if clip_grad_norm > 0:
