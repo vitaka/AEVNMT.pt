@@ -336,7 +336,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
 
     return loss
 
-def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title='xy', summary_writer=None):
+def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title='xy', summary_writer=None,num_importance_samples=10):
     model.eval()
 
     # Create the validation dataloader. We can just bucket.
@@ -349,7 +349,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
 
     if hparams.log_KL_x_post_prior_length > 0:
         _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt,hparams,step, summary_writer, device,target_len=hparams.log_KL_x_post_prior_length)
-    val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt,hparams, device)
+    val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt,hparams, device,num_importance_samples)
     val_NLL = val_NLLs['joint/main']
     if vocab_tgt is not None:
         val_bleu, inputs, refs, hyps = _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt,
@@ -610,14 +610,14 @@ def _evaluate_bleu(model, val_dl, vocab_src, vocab_tgt, device, hparams):
     bleu = compute_bleu(model_hypotheses, references, subword_token=hparams.subword_token)
     return bleu, inputs, references, model_hypotheses
 
-def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device):
+def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num_importance_samples=10):
     model.eval()
     with torch.no_grad():
         num_predictions = 0
         num_sentences = 0
         log_marginal = defaultdict(float)
         total_KL = 0.
-        n_samples = 10
+        n_samples = num_importance_samples
         for sentences_tuple in val_dl:
             if vocab_tgt is not None:
                 sentences_x, sentences_y = sentences_tuple

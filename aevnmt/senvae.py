@@ -169,7 +169,7 @@ def senvae_monolingual_step_x(
 def train(model,
           optimizers, lr_schedulers,
           data_x,
-          val_data, vocab_src,
+          val_data, test_data, vocab_src,
           device, out_dir, validate, hparams):
     """
     :param train_step: function that performs a single training step and returns
@@ -218,12 +218,12 @@ def train(model,
 
 
     # Define the evaluation function.
-    def run_evaluation(step,only_side_losses_phase,writer=summary_writer):
+    def run_evaluation(step,only_side_losses_phase,data,writer=summary_writer,num_importance_samples=10):
         # Perform model validation, keep track of validation BLEU for model
         # selection.
         model.eval()
-        metrics = validate(model, val_data, vocab_src, None, device,
-                            hparams, step, summary_writer=writer)
+        metrics = validate(model, data, vocab_src, None, device,
+                            hparams, step, summary_writer=writer,num_importance_samples=num_importance_samples)
 
         side_losses_vals.append(metrics['side_NLL'])
         if hparams.side_losses_warmup_convergence_patience > 0 and only_side_losses_phase and min(side_losses_vals) not in side_losses_vals[-hparams.side_losses_warmup_convergence_patience:]:
@@ -267,7 +267,7 @@ def train(model,
                         word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,shuffle_dict=shuffle_dict_sl if hparams.shuffle_lm_keep_epochs else None)
                 else:
                     x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=noisy_x_shuf_in=None
-                
+
                 senvae_monolingual_step_x(
                     model=model, inputs=x_in, noisy_inputs=noisy_x_in, targets=x_out,seq_mask=seq_mask_x, seq_len=seq_len_x,
                     inputs_shuf=x_shuf_in, noisy_inputs_shuf=noisy_x_shuf_in, targets_shuf=x_shuf_out, seq_mask_shuf=seq_mask_x_shuf, seq_len_shuf=seq_len_x_shuf,
@@ -276,15 +276,15 @@ def train(model,
                     hparams=hparams,
                     tracker=tracker_x,
                     writer=summary_writer if step_counter.step('x') % hparams.print_every == 0 else None,
-                    title="mono_src/SenVAE", 
-                    disable_main_loss=( (epoch_num <= hparams.side_losses_warmup) or only_side_losses_phase), 
+                    title="mono_src/SenVAE",
+                    disable_main_loss=( (epoch_num <= hparams.side_losses_warmup) or only_side_losses_phase),
                     disable_side_losses =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup)
                 )
                 step_counter.count('x')
 
                 # Run evaluation every evaluate_every steps if set (always after a bilingual batch)
                 if hparams.evaluate_every > 0 and step_counter.step('x') % hparams.evaluate_every == 0:
-                    only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase)
+                    only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data)
 
                 # Print training stats every now and again.
                 if step_counter.step('x') % hparams.print_every == 0:
@@ -305,7 +305,7 @@ def train(model,
 
         # If evaluate_every is not set, we evaluate after every epoch.
         if hparams.evaluate_every <= 0:
-            only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase)
+            only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data)
 
         epoch_num += 1
 
@@ -317,7 +317,11 @@ def train(model,
     # summaries.
     best_model_info = ckpt.load_best({f"{hparams.src}-{hparams.tgt}": model}, hparams.criterion)
     print(f"Loaded best model (wrt {hparams.criterion}) found at step {best_model_info['step']} (epoch {best_model_info['epoch']}).")
-    run_evaluation(step_counter.step(),only_side_losses_phase, writer=None)
+    run_evaluation(step_counter.step(),only_side_losses_phase, val_data,writer=None)
+
+    if test_data is not None:
+        print(f"Test set evaluation.")
+        run_evaluation(step_counter.step(),only_side_losses_phase, test_data,writer=None,num_importance_samples=1000)
 
 
 def main():
@@ -344,6 +348,10 @@ def main():
     assert not hparams.use_memmap, "use_memmap not supported"
     train_data=TextDataset(hparams.mono_src, max_length=hparams.max_sentence_length)
     val_data= TextDataset(f"{hparams.validation_prefix}.{hparams.src}", max_length=-1)
+    if hparams.test_prefix is not None:
+        test_data= TextDataset(f"{hparams.test_prefix}.{hparams.src}", max_length=-1)
+    else:
+        test_data=None
 
     print("\n==== Data")
     print(f"Training data: {len(train_data):,} sentences")
@@ -393,7 +401,7 @@ def main():
     # Train the model.
     print("\n==== Starting training")
     print(f"Using device: {device}\n")
-    train(model, optimizers, lr_schedulers, train_data, val_data, vocab_src,
+    train(model, optimizers, lr_schedulers, train_data, val_data, test_data, vocab_src,
            device, out_dir, validate_fn, hparams)
 
 
