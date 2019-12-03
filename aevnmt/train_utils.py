@@ -296,7 +296,7 @@ class CheckPoint:
         for data in self._data.values():
             data["dir"].mkdir(parents=True, exist_ok=True)
     def cooldown_happened(self):
-        self.cooldown+=1
+        self.cooldowns+=1
     def change_model_dir(self, model_dir: Path):
         for metric, data in self._data.items():
             data["dir"] = model_dir/metric
