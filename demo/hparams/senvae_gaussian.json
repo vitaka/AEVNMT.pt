@@ -11,6 +11,7 @@
     "evaluate_every": -1,
     "hidden_size": 256,
     "latent_size": 32,
+    "criterion": "likelihood",
     "gen_optimizer": "adam",
     "gen_lr": 0.002,
     "gen_l2_weight": 0.0,

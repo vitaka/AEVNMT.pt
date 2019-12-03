@@ -6,7 +6,7 @@ USE_GPU=true
 LANG=en
 TAG=ptb
 DATA=data.${LANG}/${TAG}
-OUTPUT=senvae-models/${LANG}/${TAG}/2
+OUTPUT=senvae-models/${LANG}/${TAG}/3
 HPARAMS=hparams/senvae_gaussian.json
 
 mkdir -p ${OUTPUT}
