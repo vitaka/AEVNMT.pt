@@ -261,9 +261,11 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         self.eos_idx = eos_idx
         self.feed_z = feed_z
         self.hidden_size = hidden_size
+        self.num_layers = num_layers
         self.init_layer = nn.Sequential(
-                nn.Linear(latent_size, hidden_size),
-                nn.Tanh())
+            nn.Linear(latent_size, hidden_size * num_layers),
+            nn.Tanh()
+        )
         rnn_dropout = 0. if num_layers == 1 else dropout
         rnn_fn = rnn_creation_fn(cell_type)
         feed_z_size = latent_size if feed_z else 0
@@ -275,7 +277,11 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         self.dropout_layer = nn.Dropout(p=dropout)
 
     def init(self, z):
-        hidden = tile_rnn_hidden(self.init_layer(z), self.rnn)
+        hidden = tile_rnn_hidden(
+            # [num_layers, ..., hidden_size]
+            torch.stack(torch.split(self.init_layer(z), self.hidden_size, -1)),
+            self.rnn, 
+            repeat_hidden=False)
         return hidden
 
     def generate(self, pre_output):

@@ -9,9 +9,9 @@ def rnn_creation_fn(cell_type):
     elif cell_type == "lstm":
         return nn.LSTM
 
-def tile_rnn_hidden(hidden, rnn):
+def tile_rnn_hidden(hidden, rnn, repeat_hidden=True):
     """
-    :param hidden: [1, B, hidden_size]
+    :param hidden: [1, B, hidden_size] if repeat_hidden else [num_layers, B, hidden_size]
     :param rnn: an instance of torch.nn.RNN, torch.nn.GRU. or torch.nn.LSTM.
 
     Returns a tiled hidden state that can serve as input to the given rnn. Takes into account
@@ -19,7 +19,10 @@ def tile_rnn_hidden(hidden, rnn):
     """
     num_layers = rnn.num_layers
     num_layers = num_layers * 2 if rnn.bidirectional else num_layers
-    hidden = hidden.repeat(num_layers, 1, 1)
+    if repeat_hidden:
+        hidden = hidden.repeat(num_layers, 1, 1)
     if isinstance(rnn, nn.LSTM):
         hidden = (hidden, hidden)
     return hidden
+
+
