@@ -272,8 +272,11 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         self.rnn = rnn_fn(embedder.embedding_dim + feed_z_size, hidden_size,
             batch_first=True, dropout=rnn_dropout, num_layers=num_layers)
         self.tied_embeddings = tied_embeddings
+        self.pre_output_matrix=None
         if not tied_embeddings:
             self.output_matrix = nn.Parameter(torch.randn(embedder.num_embeddings, hidden_size))
+        elif self.hidden_size != embedder.embedding_dim:
+            self.pre_output_matrix=nn.Parameter(torch.randn(embedder.embedding_dim,hidden_size))
         self.dropout_layer = nn.Dropout(p=dropout)
 
     def init(self, z):
@@ -286,6 +289,8 @@ class CorrelatedCategoricalsLM(GenerativeLM):
 
     def generate(self, pre_output):
         W = self.embedder.weight if self.tied_embeddings else self.output_matrix
+        if self.pre_output_matrix is not None:
+            pre_output=F.linear(pre_output,self.pre_output_matrix)
         return F.linear(pre_output, W)
 
     def step(self, x_embed, hidden, z):
