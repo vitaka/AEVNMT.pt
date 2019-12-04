@@ -149,7 +149,7 @@ def senvae_monolingual_step_x(
     negative_elbo.backward()
 
     if hparams.max_gradient_norm > 0:
-        nn.utils.clip_grad_norm_(parameters=model.lm_parameters(),
+        nn.utils.clip_grad_norm_(parameters=model.parameters(), 
                                  max_norm=hparams.max_gradient_norm,
                                  norm_type=float("inf"))
 

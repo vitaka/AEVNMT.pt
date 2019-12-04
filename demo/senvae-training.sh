@@ -18,4 +18,5 @@ python -m aevnmt.senvae \
     --mono_src ${DATA}/train.${LANG} \
     --output_dir ${OUTPUT} \
     --hparams_file ${HPARAMS} \
-    --use_gpu ${USE_GPU}
+    --use_gpu ${USE_GPU} \
+    --gen_l2_weight 1e-5

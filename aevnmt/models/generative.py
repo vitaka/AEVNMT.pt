@@ -77,7 +77,7 @@ class IndependentLM(GenerativeLM):
             )
             self.output_matrix = embedder.weight  # [V, Dx]
         else:
-            self.encoder = nn.Identity() 
+            self.encoder = nn.Dropout(dropout)  #nn.Identity() 
             self.output_matrix = nn.Parameter(torch.randn(vocab_size, latent_size))  # [V, Dz]
 
     def forward(self, x, z, state=dict()) -> Categorical:

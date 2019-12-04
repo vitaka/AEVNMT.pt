@@ -59,6 +59,7 @@
     "bow_loss_tl": false, 
     "MADE_loss": false,
     "MADE_loss_tl": false,
+    "MADE_resample_mask_every": 0,
     "count_MADE_loss": false,
     "count_MADE_loss_tl": false,
     "ibm1_loss": false,
