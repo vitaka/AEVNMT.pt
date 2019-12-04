@@ -44,8 +44,9 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
     if hparams.bow_loss:
         lms['bow'] = IndependentLM(
             latent_size=hparams.latent_size,
-            vocab_size=src_embedder.num_embeddings,
-            pad_idx=src_embedder.padding_idx)
+            embedder=src_embedder,
+            tied_embeddings=False,
+            dropout=0.5)
     if hparams.MADE_loss:
         lms['made'] = CorrelatedBernoullisLM(
             vocab_size=src_embedder.num_embeddings,
@@ -84,8 +85,9 @@ def create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams)
     if hparams.bow_loss_tl:
         tms['bow'] = IndependentTM(
             latent_size=hparams.latent_size,
-            vocab_size=tgt_embedder.num_embeddings,
-            pad_idx=tgt_embedder.padding_idx)
+            embedder=tgt_embedder,
+            tied_embeddings=False,
+            dropout=0.5)
     if hparams.MADE_loss_tl:
         tms['made'] = CorrelatedBernoullisTM(
             vocab_size=tgt_embedder.num_embeddings,
@@ -269,7 +271,13 @@ def create_model(hparams, vocab_src, vocab_tgt):
             tied_embeddings=hparams.tied_embeddings
         )
 
-    inf_model = create_inference_model(src_embedder, tgt_embedder, hparams)
+    # We want to give the inference model its own embedding layer
+    
+    inf_model = create_inference_model(
+        DetachedEmbeddingLayer(src_embedder) if hparams.inf_share_embeddings else torch.nn.Embedding(
+            src_embedder.num_embeddings, src_embedder.embedding_dim, padding_idx=src_embedder.padding_idx),
+        None,
+        hparams)
 
     model = AEVNMT(
         latent_size=hparams.latent_size,

@@ -64,10 +64,21 @@ class IndependentLM(GenerativeLM):
     where m = |x|.
     """
 
-    def __init__(self, latent_size, vocab_size, pad_idx):
+    def __init__(self, latent_size, embedder, tied_embeddings=False, dropout=0.5):
         super().__init__()
-        self.pad_idx = pad_idx
-        self.output_layer = nn.Linear(latent_size, vocab_size, bias=True)
+        vocab_size = embedder.num_embeddings
+        self.pad_idx = embedder.padding_idx
+
+        if tied_embeddings:
+            self.encoder = nn.Sequential(
+                    nn.Linear(latent_size, embedder.embedding_dim, bias=False),  # we want to keep this model from overfitting
+                    nn.Tanh(),
+                    nn.Dropout(dropout)  # think of this as Dropout applied to the input of the output layer
+            )
+            self.output_matrix = embedder.weight  # [V, Dx]
+        else:
+            self.encoder = nn.Identity() 
+            self.output_matrix = nn.Parameter(torch.randn(vocab_size, latent_size))  # [V, Dz]
 
     def forward(self, x, z, state=dict()) -> Categorical:
         """
@@ -75,8 +86,10 @@ class IndependentLM(GenerativeLM):
             X_i|z ~ Cat(f(z))
         with shape [B, 1, Vx]
         """
+        # [B, Vx]
+        logits = F.linear(self.encoder(z), self.output_matrix)
         # [B, 1, Vx]
-        return Categorical(logits=self.output_layer(z).unsqueeze(1))
+        return Categorical(logits=logits.unsqueeze(1))
 
     def log_prob(self, likelihood: Categorical, x):
         # [B, Tx, Vx]
@@ -406,12 +419,10 @@ class IndependentTM(GenerativeTM):
     where n = |y|. Note that the parameterisation currently ignores x.
     """
 
-    def __init__(self, latent_size, vocab_size, pad_idx):
+    def __init__(self, latent_size, embedder, tied_embeddings=False, dropout=0.5):
         super().__init__()
         self.tgt_independent_lm = IndependentLM(
-            latent_size=latent_size,
-            vocab_size=vocab_size,
-            pad_idx=pad_idx)
+            latent_size=latent_size, embedder=embedder, tied_embeddings=tied_embeddings, dropout=dropout)
 
     def forward(self, x, seq_mask_x, seq_len_x, y, z, state=dict()) -> Categorical:
         return self.tgt_independent_lm(y, z)
