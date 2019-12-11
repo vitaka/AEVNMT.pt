@@ -136,8 +136,8 @@ def create_inference_model(src_embedder, tgt_embedder, hparams) -> InferenceMode
         inf_encoder = get_inference_encoder(
             encoder_style=hparams.inf_encoder_style,
             conditioning_context=hparams.inf_conditioning,
-            embedder_x=DetachedEmbeddingLayer(src_embedder),
-            embedder_y=DetachedEmbeddingLayer(tgt_embedder),
+            embedder_x=src_embedder,
+            embedder_y=tgt_embedder,
             hidden_size=hparams.hidden_size,
             rnn_bidirectional=hparams.bidirectional,
             rnn_num_layers=hparams.num_enc_layers,
@@ -160,8 +160,8 @@ def create_inference_model(src_embedder, tgt_embedder, hparams) -> InferenceMode
         encoder_x = get_inference_encoder(
             encoder_style=enc_styles[0],
             conditioning_context='x',
-            embedder_x=DetachedEmbeddingLayer(src_embedder),
-            embedder_y=DetachedEmbeddingLayer(tgt_embedder),
+            embedder_x=src_embedder,
+            embedder_y=tgt_embedder,
             hidden_size=hparams.hidden_size,
             rnn_bidirectional=hparams.bidirectional,
             rnn_num_layers=hparams.num_enc_layers,
@@ -175,8 +175,8 @@ def create_inference_model(src_embedder, tgt_embedder, hparams) -> InferenceMode
         encoder_y = get_inference_encoder(
             encoder_style=enc_styles[1],
             conditioning_context='y',
-            embedder_x=DetachedEmbeddingLayer(src_embedder),
-            embedder_y=DetachedEmbeddingLayer(tgt_embedder),
+            embedder_x=src_embedder,
+            embedder_y=tgt_embedder,
             hidden_size=hparams.hidden_size,
             rnn_bidirectional=hparams.bidirectional,
             rnn_num_layers=hparams.num_enc_layers,
@@ -195,8 +195,8 @@ def create_inference_model(src_embedder, tgt_embedder, hparams) -> InferenceMode
             encoder_xy = get_inference_encoder(
                 encoder_style=enc_styles[2],
                 conditioning_context='xy',
-                embedder_x=DetachedEmbeddingLayer(src_embedder),
-                embedder_y=DetachedEmbeddingLayer(tgt_embedder),
+                embedder_x=src_embedder,
+                embedder_y=tgt_embedder,
                 hidden_size=hparams.hidden_size,
                 rnn_bidirectional=hparams.bidirectional,
                 rnn_num_layers=hparams.num_enc_layers,
@@ -272,11 +272,11 @@ def create_model(hparams, vocab_src, vocab_tgt):
         )
 
     # We want to give the inference model its own embedding layer
-    
     inf_model = create_inference_model(
         DetachedEmbeddingLayer(src_embedder) if hparams.inf_share_embeddings else torch.nn.Embedding(
             src_embedder.num_embeddings, src_embedder.embedding_dim, padding_idx=src_embedder.padding_idx),
-        None,
+        DetachedEmbeddingLayer(tgt_embedder) if hparams.inf_share_embeddings else torch.nn.Embedding(
+            tgt_embedder.num_embeddings, tgt_embedder.embedding_dim, padding_idx=tgt_embedder.padding_idx),
         hparams)
 
     model = AEVNMT(
