@@ -158,6 +158,12 @@ def senvae_monolingual_step_x(
 
     optimizers['gen'].zero_grad()
     optimizers['inf_z'].zero_grad()
+    
+    if hparams.mdr:
+        optimizers['mdr'].zero_grad()
+        mono_vae_terms['mdr_loss'].backward()
+        optimizers['mdr'].step()
+        tracker.update('MRD/loss', mono_vae_terms['mdr_loss'].sum().item())
 
     # Update statistics.
     ELBO = mono_vae_terms['ELBO']
@@ -367,7 +373,8 @@ def main():
     optimizers, lr_schedulers = construct_optimizers(
         hparams,
         gen_parameters=model.generative_parameters(),
-        inf_z_parameters=model.inference_parameters())
+        inf_z_parameters=model.inference_parameters(),
+        mdr_parameters=model.mdr_parameters())
     device = torch.device("cuda:0") if hparams.use_gpu else torch.device("cpu")
     model = model.to(device)
 

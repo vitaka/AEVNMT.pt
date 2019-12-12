@@ -22,7 +22,8 @@ class AEVNMT(nn.Module):
             dropout, tied_embeddings, prior_family: str, prior_params: list,
             feed_z=False,
             aux_lms: Dict[str, GenerativeLM]=dict(), aux_tms: Dict[str, GenerativeTM]=dict(),
-            mixture_likelihood=False, mixture_likelihood_dir_prior=0.0):
+            mixture_likelihood=False, mixture_likelihood_dir_prior=0.0,
+            mdr=False):
         super().__init__()
         self.src_embedder = src_embedder
         self.tgt_embedder = tgt_embedder
@@ -37,7 +38,14 @@ class AEVNMT(nn.Module):
         self.aux_lms = nn.ModuleDict(aux_lms)
         self.aux_tms = nn.ModuleDict(aux_tms)
 
-
+        if mdr:
+            self.lag = torch.nn.Sequential(
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(1, 1),
+                torch.nn.Softplus()
+            )
+        else:
+            self.lag = None
 
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
@@ -68,7 +76,7 @@ class AEVNMT(nn.Module):
                 prior_params = [10, 10, 0.5]
             if len(prior_params) != 3:
                 raise ValueError("Specify the MoG prior using a number of components, a radius (for initialisation), and a strictly positive scale.")
-            num_components = prior_params[0]
+            num_components = int(prior_params[0])
             if num_components <= 1:
                 raise ValueError("An MoG prior requires more than 1 component.")
             prior_radius = prior_params[1]
@@ -83,6 +91,18 @@ class AEVNMT(nn.Module):
             self.register_buffer("prior_scales", torch.full([num_components, latent_size], prior_scale))
         else:
             raise NotImplementedError("I cannot impose a %s prior on the latent code." % prior_family)
+
+    def lagrangian_multiplier(self, device):
+        if self.lag is None:
+            raise ValueError("You are not using MDR, thus there's no Lagrangian multiplier")
+        else:
+            return self.lag(torch.zeros(1, device=device))
+
+    def mdr_parameters(self):
+        if self.lag is None:
+            return []
+        else:
+            return self.lag.parameters()
 
     def inference_parameters(self):
         return self.inference_model.parameters()
@@ -215,16 +235,25 @@ class AEVNMT(nn.Module):
         # distribution.
         pz = self.prior()
 
+        out_dict = dict()
         # TODO: N this is [...,D], whereas with MoG this is [...]
         #  we need to wrap stuff around torch.distributions.Independent
         KL = torch.distributions.kl.kl_divergence(qz, pz)
         raw_KL = KL * 1
-
+        mdr_term = 0.
+        mdr_loss = 0.
         if free_nats > 0:
-            KL = torch.clamp(KL, min=free_nats)
+            if self.lag is None:
+                KL = torch.clamp(KL, min=free_nats)
+            else:
+                u = self.lagrangian_multiplier(KL.device)
+                rate = KL.mean()
+                mdr_term = u.detach() * (free_nats - rate)
+                mdr_loss = - u * (free_nats - rate.detach())
+                out_dict['mdr_loss'] = mdr_loss
+        # annealing
         KL *= KL_weight
 
-        out_dict = dict()
         out_dict['KL'] = KL
         out_dict['raw_KL'] = raw_KL
 
@@ -263,7 +292,7 @@ class AEVNMT(nn.Module):
             if disable_main_loss:
                 elbo = - KL
 
-            loss = - (elbo + aux_log_likelihood)
+            loss = - (elbo + aux_log_likelihood - mdr_term) 
 
             # main log-likelihoods
             out_dict['lm/main'] = lm_log_likelihood
