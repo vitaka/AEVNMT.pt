@@ -245,7 +245,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
         cell_type=hparams.cell_type,
         tied_embeddings=hparams.tied_embeddings,
         feed_z=hparams.feed_z,
-        gate_z=False  # TODO implement
+        gate_z=hparams.gate_z
     )
 
     # Auxiliary generative components
@@ -272,12 +272,12 @@ def create_model(hparams, vocab_src, vocab_tgt):
         )
 
     # We want to give the inference model its own embedding layer
-   
+
     if tgt_embedder is None:
         tgt_embedder_for_inf = None
     else:
         tgt_embedder_for_inf = DetachedEmbeddingLayer(tgt_embedder) if hparams.inf_share_embeddings else torch.nn.Embedding(
-            tgt_embedder.num_embeddings, tgt_embedder.embedding_dim, padding_idx=tgt_embedder.padding_idx),
+            tgt_embedder.num_embeddings, tgt_embedder.embedding_dim, padding_idx=tgt_embedder.padding_idx)
 
     inf_model = create_inference_model(
         DetachedEmbeddingLayer(src_embedder) if hparams.inf_share_embeddings else torch.nn.Embedding(
