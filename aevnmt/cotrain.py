@@ -93,7 +93,7 @@ def mono_vae_loss(
         model, hparams, inputs, noisy_inputs, targets, seq_len,seq_mask,
         inputs_shuf, noisy_inputs_shuf, targets_shuf, seq_len_shuf,seq_mask_shuf,
         qz, z, KL_weight, step,
-        state=dict(), writer=None, title="SenVAE"):
+        state=dict(), writer=None, title="SenVAE",disable_main_loss=False,disable_side_losses=False):
 
     tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(noisy_inputs, seq_mask, seq_len, None,
     noisy_inputs_shuf,seq_mask_shuf,seq_len_shuf,
@@ -107,7 +107,7 @@ def mono_vae_loss(
                       KL_weight=KL_weight,
                       reduction="mean",
                       aux_lm_likelihoods=aux_lm_likelihoods,
-                      aux_tm_likelihoods=aux_tm_likelihoods)
+                      aux_tm_likelihoods=aux_tm_likelihoods,disable_main_loss=disable_main_loss,disable_side_losses=disable_side_losses)
 
 
     if writer:
@@ -123,7 +123,7 @@ x_in, x_out, seq_mask_x, seq_len_x,
 y_in, y_out, seq_mask_y, seq_len_y,
 x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf,
 y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf,
-step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="bilingual/xy", synthetic_x=False):
+step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="bilingual/xy", synthetic_x=False,disable_main_loss=False, disable_side_losses=False):
 
     loss_terms = aevnmt_helper.train_step(
             model, x_in, x_out, seq_mask_x, seq_len_x, x_in,
@@ -131,7 +131,7 @@ step, optimizers,lr_schedulers,KL_weight,tracker,writer=None,title="bilingual/xy
             x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf,
             y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf,
             hparams,
-            step, summary_writer=writer, synthetic_x=synthetic_x)
+            step, summary_writer=writer, synthetic_x=synthetic_x,disable_main_loss=disable_main_loss, disable_side_losses=disable_side_losses)
     loss=loss_terms["loss"]
 
     # Backpropagate and update gradients.
@@ -175,7 +175,7 @@ def senvae_monolingual_step_x(
         inputs, noisy_inputs, targets, seq_mask, seq_len,
         inputs_shuf, noisy_inputs_shuf, targets_shuf, seq_mask_shuf, seq_len_shuf,
         step, optimizers, KL_weight,
-        hparams, tracker, writer=None, title='SenVAE'):
+        hparams, tracker, writer=None, title='SenVAE',disable_main_loss=False,disable_side_losses=False):
 
     # Infer q(z|x)
     qz = model.approximate_posterior(inputs, seq_mask, seq_len,None,None,None)
@@ -193,7 +193,7 @@ def senvae_monolingual_step_x(
         inputs_shuf=inputs_shuf, noisy_inputs_shuf=noisy_inputs_shuf, targets_shuf=targets_shuf, seq_mask_shuf=seq_mask_shuf, seq_len_shuf=seq_len_shuf,
         qz=qz, z=z,
         KL_weight=KL_weight, step=step,
-        writer=writer, title=title
+        writer=writer, title=title,disable_main_loss=disable_main_loss, disable_side_losses=disable_side_losses
     )
     negative_elbo = mono_vae_terms['loss']
     negative_elbo.backward()
@@ -387,6 +387,11 @@ def train(model,
     # Manage checkpoints (depends on training phase)
     ckpt = CheckPoint(model_dir=out_dir/"model", metrics=['bleu', 'likelihood'])
 
+    only_side_losses_phase=False
+    if hparams.side_losses_warmup_convergence_patience > 0:
+        only_side_losses_phase=True
+    side_losses_vals=[]
+
     # Define the evaluation function.
     def run_evaluation(step,writer=summary_writer):
         # Perform model validation, keep track of validation BLEU for model
@@ -395,14 +400,22 @@ def train(model,
         metrics = validate(model, val_data, vocab_src, vocab_tgt, device,
                             hparams, step, summary_writer=writer)
 
-        # Update the learning rate scheduler.
-        lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
+        side_losses_vals.append(metrics['side_NLL'])
+        if hparams.side_losses_warmup_convergence_patience > 0 and only_side_losses_phase and min(side_losses_vals) not in side_losses_vals[-hparams.side_losses_warmup_convergence_patience:]:
+            only_side_losses_phase=False
 
-        ckpt.update(
-            epoch_num, step, {f"{hparams.src}-{hparams.tgt}": model},
-            # we save with respect to BLEU and likelihood
-            bleu=metrics['bleu'], likelihood=metrics['likelihood']
-        )
+        if (not epoch_num <= hparams.side_losses_warmup) and not only_side_losses_phase:
+            # Update the learning rate scheduler.
+            cooldown=lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
+
+            ckpt.update(
+                epoch_num, step, {f"{hparams.src}-{hparams.tgt}": model},
+                # we save with respect to BLEU and likelihood
+                bleu=metrics['bleu'], likelihood=metrics['likelihood']
+            )
+            if cooldown:
+                ckpt.cooldown_happened()
+        return only_side_losses_phase
 
     # Some statistics for training
     tracker_xy = Tracker(hparams.print_every)
@@ -520,11 +533,13 @@ def train(model,
                 tracker=tracker_xy,
                 writer=summary_writer if step_counter.step(
                     'xy') % hparams.print_every == 0 else None,
-                title="bilingual/xy")
+                title="bilingual/xy",
+                disable_main_loss=( (epoch_num <= hparams.side_losses_warmup) or only_side_losses_phase),
+                disable_side_losses =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup))
 
                 # Run evaluation every evaluate_every steps if set (always after a bilingual batch)
                 if hparams.evaluate_every > 0 and step_counter.step('xy') % hparams.evaluate_every == 0:
-                    run_evaluation(step_counter.step())
+                    only_side_losses_phase=run_evaluation(step_counter.step())
 
                 # Print training stats every now and again.
                 if step_counter.step('xy') % hparams.print_every == 0:
@@ -551,7 +566,7 @@ def train(model,
 
         # If evaluate_every is not set, we evaluate after every epoch.
         if hparams.evaluate_every <= 0:
-            run_evaluation(step_counter.step())
+            only_side_losses_phase=run_evaluation(step_counter.step())
 
         epoch_num += 1
 

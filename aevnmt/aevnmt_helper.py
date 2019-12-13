@@ -307,7 +307,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
               x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf,
               y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf,
-               hparams, step, summary_writer=None, synthetic_x=False):
+               hparams, step, summary_writer=None, synthetic_x=False,disable_main_loss=False, disable_side_losses=False):
 
     # Use q(z|x) for training to sample a z.
     qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
@@ -335,7 +335,7 @@ def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_ou
                       KL_weight=KL_weight,
                       reduction="mean",
                       aux_lm_likelihoods=aux_lm_likelihoods,
-                      aux_tm_likelihoods=aux_tm_likelihoods)
+                      aux_tm_likelihoods=aux_tm_likelihoods,disable_main_loss=disable_main_loss, disable_side_losses=disable_side_losses)
 
     if summary_writer:
         summary_writer.add_histogram("posterior/z", z, step)
