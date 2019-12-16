@@ -393,7 +393,7 @@ def train(model,
     side_losses_vals=[]
 
     # Define the evaluation function.
-    def run_evaluation(step,writer=summary_writer):
+    def run_evaluation(step,only_side_losses_phase,writer=summary_writer):
         # Perform model validation, keep track of validation BLEU for model
         # selection.
         model.eval()
@@ -539,7 +539,7 @@ def train(model,
 
                 # Run evaluation every evaluate_every steps if set (always after a bilingual batch)
                 if hparams.evaluate_every > 0 and step_counter.step('xy') % hparams.evaluate_every == 0:
-                    only_side_losses_phase=run_evaluation(step_counter.step())
+                    only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase)
 
                 # Print training stats every now and again.
                 if step_counter.step('xy') % hparams.print_every == 0:
@@ -566,7 +566,7 @@ def train(model,
 
         # If evaluate_every is not set, we evaluate after every epoch.
         if hparams.evaluate_every <= 0:
-            only_side_losses_phase=run_evaluation(step_counter.step())
+            only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase)
 
         epoch_num += 1
 
@@ -578,7 +578,7 @@ def train(model,
     # summaries.
     best_model_info = ckpt.load_best({f"{hparams.src}-{hparams.tgt}": model}, hparams.criterion)
     print(f"Loaded best model (wrt {hparams.criterion}) found at step {best_model_info['step']} (epoch {best_model_info['epoch']}).")
-    run_evaluation(step_counter.step(), writer=None)
+    run_evaluation(step_counter.step(),only_side_losses_phase, writer=None)
 
 
 def main():
