@@ -95,7 +95,7 @@ def mono_vae_loss(
         model, hparams, inputs, noisy_inputs, targets, seq_len,seq_mask,
         inputs_shuf, noisy_inputs_shuf, targets_shuf, seq_len_shuf,seq_mask_shuf,
         qz, z, KL_weight, step,
-        state=dict(), writer=None, title="SenVAE", disable_main_loss=False,disable_side_losses=False):
+        state=dict(), writer=None, title="SenVAE", disable_main_loss=False,disable_side_losses=False, disable_kl=False):
 
     tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(noisy_inputs, seq_mask, seq_len, None,
     noisy_inputs_shuf,seq_mask_shuf,seq_len_shuf,
@@ -106,10 +106,10 @@ def mono_vae_loss(
     y_shuf_out=None
     loss = model.loss(tm_likelihood, lm_likelihood, y_out, targets,y_shuf_out,targets_shuf, qz,
                       free_nats=hparams.KL_free_nats,
-                      KL_weight=KL_weight,
+                      KL_weight=KL_weight * ( 0 if disable_kl else 1 ),
                       reduction="mean",
                       aux_lm_likelihoods=aux_lm_likelihoods,
-                      aux_tm_likelihoods=aux_tm_likelihoods, disable_main_loss=disable_main_loss,disable_side_losses=disable_side_losses)
+                      aux_tm_likelihoods=aux_tm_likelihoods, disable_main_loss=disable_main_loss,disable_side_losses=disable_side_losses, disable_kl=disable_kl)
 
 
     if writer:
@@ -125,15 +125,21 @@ def senvae_monolingual_step_x(
         inputs, noisy_inputs, targets, seq_mask, seq_len,
         inputs_shuf, noisy_inputs_shuf, targets_shuf, seq_mask_shuf, seq_len_shuf,
         step, optimizers, KL_weight,
-        hparams, tracker, writer=None, title='SenVAE',disable_main_loss=False,disable_side_losses=False):
+        hparams, tracker, writer=None, title='SenVAE',disable_main_loss=False,disable_side_losses=False,disable_kl=False,disconnect_inference_network=False):
 
     # Infer q(z|x)
     qz = model.approximate_posterior(inputs, seq_mask, seq_len,None,None,None)
     # [B, dz]
     z = qz.rsample()
     # [B]
+
+    if disconnect_inference_network:
+        z_in=z.disconnect()
+    else:
+        z_in=z
+
     if writer:
-        writer.add_histogram("posterior-x/z", z, step)
+        writer.add_histogram("posterior-x/z", z_in, step)
         for param_name, param_value in get_named_params(qz):
             writer.add_histogram("posterior-x/%s" % param_name, param_value, step)
 
@@ -141,15 +147,15 @@ def senvae_monolingual_step_x(
         model=model, hparams=hparams,
         inputs=inputs, noisy_inputs=noisy_inputs, targets=targets, seq_len=seq_len,seq_mask=seq_mask,
         inputs_shuf=inputs_shuf, noisy_inputs_shuf=noisy_inputs_shuf, targets_shuf=targets_shuf, seq_mask_shuf=seq_mask_shuf, seq_len_shuf=seq_len_shuf,
-        qz=qz, z=z,
+        qz=qz, z=z_in,
         KL_weight=KL_weight, step=step,
-        writer=writer, title=title, disable_main_loss=disable_main_loss, disable_side_losses=disable_side_losses
+        writer=writer, title=title, disable_main_loss=disable_main_loss, disable_side_losses=disable_side_losses,disable_kl=disable_kl
     )
     negative_elbo = mono_vae_terms['loss']
     negative_elbo.backward()
 
     if hparams.max_gradient_norm > 0:
-        nn.utils.clip_grad_norm_(parameters=model.parameters(), 
+        nn.utils.clip_grad_norm_(parameters=model.parameters(),
                                  max_norm=hparams.max_gradient_norm,
                                  norm_type=float("inf"))
 
@@ -158,7 +164,7 @@ def senvae_monolingual_step_x(
 
     optimizers['gen'].zero_grad()
     optimizers['inf_z'].zero_grad()
-    
+
     if hparams.mdr:
         optimizers['mdr'].zero_grad()
         mono_vae_terms['mdr_loss'].backward()
@@ -286,7 +292,11 @@ def train(model,
                     writer=summary_writer if step_counter.step('x') % hparams.print_every == 0 else None,
                     title="mono_src/SenVAE",
                     disable_main_loss=( (epoch_num <= hparams.side_losses_warmup) or only_side_losses_phase),
-                    disable_side_losses =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup)
+                    disable_side_losses =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup),
+                    disable_kl =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_KL_after_warmup),
+                    disconnect_inference_network =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disconnect_inference_network_after_warmup)
+
+
                 )
                 step_counter.count('x')
 

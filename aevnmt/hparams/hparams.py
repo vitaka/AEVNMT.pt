@@ -206,6 +206,8 @@ options = {
     "side_losses_warmup": (int, 0, False, "Optimize only side losses for a number of epochs", 6),
     "side_losses_warmup_convergence_patience": (int, 0, False, "Optimize only side losses until their validation ppl stops improving", 6),
     "disable_side_losses_after_warmup": (bool, False, False, "Train only main objective after side losses warmup", 6),
+    "disable_KL_after_warmup": (bool, False, False, "Disable KL after side losses warmup", 6),
+    "disconnect_inference_network_after_warmup": (bool, False, False, "Disconnect inference network after side losses warmup", 6),
     "disable_tensorboard": (bool, False, False, "Disables logging data for TensorBoard. Saves disk space.", 6),
     "log_KL_x_post_prior_length": (int, 0, False, "Log KL between p(x|x<i,z) when z has been sampled from the posterior or sampled from the prior for sentences with this length. 0 disables logging.", 6),
 }

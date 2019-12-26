@@ -292,7 +292,7 @@ class AEVNMT(nn.Module):
             if disable_main_loss:
                 elbo = - KL
 
-            loss = - (elbo + aux_log_likelihood - mdr_term) 
+            loss = - (elbo + aux_log_likelihood - mdr_term)
 
             # main log-likelihoods
             out_dict['lm/main'] = lm_log_likelihood
