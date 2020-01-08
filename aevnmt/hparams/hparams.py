@@ -90,6 +90,7 @@ options = {
     "count_MADE_loss_tl":(bool, False, False, "Add TL count MADE term to the loss", 1),
     "MADE_resample_mask_every": (int, 10, False, "Resample MADE mask every this forward passes.", 1),
     "MADE_normalize_weight_num_preds":(bool, False, False, "Normalize MADE weight: multiply loss by num_predictions_lm/num_predictions_MADE", 1),
+    "MADE_size": (int, 0, False, "The size of the MADE hidden layers. If set to 0, hidden_size is used.", 1),
     "shuffle_lm":(bool, False, False, "z is also used to produce source sentences with a shuffled LM instead of a reverse LM", 1),
     "shuffle_lm_tl":(bool, False, False, "z is also used to produce target sentences with a shuffled LM instead of a reverse LM", 1),
     "shuffle_lm_keep_bpe":(bool, False, False, "Shuffle whole words instead of BPE fragments.", 1),

@@ -40,6 +40,9 @@ def _draw_translations(model, val_dl, vocab_src, vocab_tgt, device, hparams):
 
 
 def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, GenerativeLM]:
+    made_size=hparams.MADE_size
+    if made_size == 0:
+        made_size=hparams.hidden_size
     lms = dict()
     if hparams.bow_loss:
         lms['bow'] = IndependentLM(
@@ -51,7 +54,7 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
         lms['made'] = CorrelatedBernoullisLM(
             vocab_size=src_embedder.num_embeddings,
             latent_size=hparams.latent_size,
-            hidden_sizes=[hparams.hidden_size, hparams.hidden_size],  # TODO: generalise
+            hidden_sizes=[made_size, made_size],  # TODO: generalise
             pad_idx=src_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
             resample_mask_every=hparams.MADE_resample_mask_every,normalize_weight=hparams.MADE_normalize_weight_num_preds)  # TODO: generalise
@@ -59,7 +62,7 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
         lms['count_made'] = CorrelatedPoissonsLM(
             vocab_size=src_embedder.num_embeddings,
             latent_size=hparams.latent_size,
-            hidden_sizes=[hparams.hidden_size, hparams.hidden_size],  # TODO: generalise
+            hidden_sizes=[made_size, made_size],  # TODO: generalise
             pad_idx=src_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
             resample_mask_every=hparams.MADE_resample_mask_every,normalize_weight=hparams.MADE_normalize_weight_num_preds)  # TODO: generalise
@@ -81,6 +84,9 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
 
 
 def create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams) -> Dict[str, GenerativeTM]:
+    made_size=hparams.MADE_size
+    if made_size == 0:
+        made_size=hparams.hidden_size
     tms = dict()
     if hparams.bow_loss_tl:
         tms['bow'] = IndependentTM(
@@ -92,7 +98,7 @@ def create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams)
         tms['made'] = CorrelatedBernoullisTM(
             vocab_size=tgt_embedder.num_embeddings,
             latent_size=hparams.latent_size,
-            hidden_sizes=[hparams.hidden_size, hparams.hidden_size],
+            hidden_sizes=[made_size, made_size],
             pad_idx=tgt_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
             resample_mask_every=hparams.MADE_resample_mask_every,normalize_weight=hparams.MADE_normalize_weight_num_preds)  # TODO: generalise
@@ -100,7 +106,7 @@ def create_aux_translation_models(vocab_tgt,src_embedder, tgt_embedder, hparams)
         tms['count_made'] = CorrelatedPoissonsTM(
             vocab_size=tgt_embedder.num_embeddings,
             latent_size=hparams.latent_size,
-            hidden_sizes=[hparams.hidden_size, hparams.hidden_size],
+            hidden_sizes=[made_size, made_size],
             pad_idx=tgt_embedder.padding_idx,
             num_masks=10,  # TODO: generalise
             resample_mask_every=hparams.MADE_resample_mask_every,normalize_weight=hparams.MADE_normalize_weight_num_preds)  # TODO: generalise
