@@ -109,7 +109,7 @@ def mono_vae_loss(
                       KL_weight=KL_weight * ( 0 if disable_kl else 1 ),
                       reduction="mean",
                       aux_lm_likelihoods=aux_lm_likelihoods,
-                      aux_tm_likelihoods=aux_tm_likelihoods, disable_main_loss=disable_main_loss,disable_side_losses=disable_side_losses, disable_kl=disable_kl)
+                      aux_tm_likelihoods=aux_tm_likelihoods, disable_main_loss=disable_main_loss,disable_side_losses=disable_side_losses)
 
 
     if writer:
@@ -134,7 +134,7 @@ def senvae_monolingual_step_x(
     # [B]
 
     if disconnect_inference_network:
-        z_in=z.disconnect()
+        z_in=z.detach()
     else:
         z_in=z
 
