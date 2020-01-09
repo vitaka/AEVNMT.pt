@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter
 
 from aevnmt.train_utils import load_data, load_vocabularies_senvae
 from aevnmt.train_utils import StepCounter, CheckPoint
-from aevnmt.opt_utils import construct_optimizers, lr_scheduler_step, take_optimizer_step, RequiresGradSwitch
+from aevnmt.opt_utils import construct_optimizers, lr_scheduler_step, take_optimizer_step, RequiresGradSwitch, get_optimizer
 from aevnmt.hparams import Hyperparameters
 from aevnmt.data import BucketingParallelDataLoader, BucketingTextDataLoader
 from aevnmt.data import PAD_TOKEN
@@ -239,6 +239,16 @@ def train(model,
 
         side_losses_vals.append(metrics['side_NLL'])
         if hparams.side_losses_warmup_convergence_patience > 0 and only_side_losses_phase and min(side_losses_vals) not in side_losses_vals[-hparams.side_losses_warmup_convergence_patience:]:
+            if hparams.reset_main_decoder_after_warmup:
+                #reset main decoder
+                initialize_model(model.language_model, vocab_src[PAD_TOKEN], hparams.cell_type,
+                                 hparams.emb_init_scale, verbose=True)
+                optimizers["gen"] =
+                    "gen": get_optimizer(
+                        hparams.gen_optimizer,
+                        gen_parameters,
+                        hparams.gen_lr,
+                        hparams.gen_l2_weight)
             only_side_losses_phase=False
 
         if (not epoch_num <= hparams.side_losses_warmup) and not only_side_losses_phase:
@@ -291,7 +301,7 @@ def train(model,
                     tracker=tracker_x,
                     writer=summary_writer if step_counter.step('x') % hparams.print_every == 0 else None,
                     title="mono_src/SenVAE",
-                    disable_main_loss=( (epoch_num <= hparams.side_losses_warmup) or only_side_losses_phase),
+                    disable_main_loss=( (epoch_num <= hparams.side_losses_warmup) or only_side_losses_phase) and not hparams.keep_main_loss_during_warmup,
                     disable_side_losses =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup),
                     disable_kl =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_KL_after_warmup),
                     disconnect_inference_network =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disconnect_inference_network_after_warmup)
