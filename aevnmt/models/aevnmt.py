@@ -322,7 +322,7 @@ class AEVNMT(nn.Module):
             #Lagrangian multiplier if needed
             if self.lag_side is not None:
                 u = self.lagrangian_multiplier_side(aux_log_likelihood.device)
-                rate = -side_elbo
+                rate = -side_elbo.mean()
                 lag_side_term = u.detach() * (self.lag_side_target - rate)
                 lag_side_loss = - u * (self.lag_side_target - rate.detach())
                 out_dict['lag_side_loss'] = lag_side_loss
