@@ -292,12 +292,14 @@ class AEVNMT(nn.Module):
             if disable_main_loss:
                 elbo = - KL
 
+
             loss = - (elbo + aux_log_likelihood - mdr_term)
 
             # main log-likelihoods
             out_dict['lm/main'] = lm_log_likelihood
             out_dict['tm/main'] = tm_log_likelihood
             out_dict['ELBO']=elbo
+            out_dict['sideELBO']=aux_log_likelihood - KL
         else:
             assert disable_main_loss == False
             assert disable_side_losses == False
