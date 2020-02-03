@@ -23,7 +23,7 @@ class AEVNMT(nn.Module):
             feed_z=False,
             aux_lms: Dict[str, GenerativeLM]=dict(), aux_tms: Dict[str, GenerativeTM]=dict(),
             mixture_likelihood=False, mixture_likelihood_dir_prior=0.0,
-            mdr=False):
+            mdr=False, lag_side=None):
         super().__init__()
         self.src_embedder = src_embedder
         self.tgt_embedder = tgt_embedder
@@ -46,6 +46,17 @@ class AEVNMT(nn.Module):
             )
         else:
             self.lag = None
+
+        if lag_side is not None:
+            self.lag_side= torch.nn.Sequential(
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(1, 1),
+                torch.nn.Softplus()
+            )
+            self.lag_side_target=lag_side
+        else:
+            self.lag_side= None
+            self.lag_side_target=None
 
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
@@ -103,6 +114,19 @@ class AEVNMT(nn.Module):
             return []
         else:
             return self.lag.parameters()
+
+    def lagrangian_multiplier_side(self, device):
+        if self.lag_side is None:
+            raise ValueError("You are not using Lagrangian side losses target, thus there's no Lagrangian multiplier")
+        else:
+            return self.lag_side(torch.zeros(1, device=device))
+
+    def lag_side_parameters(self):
+        if self.lag_side is None:
+            return []
+        else:
+            return self.lag_side.parameters()
+
 
     def inference_parameters(self):
         return self.inference_model.parameters()
@@ -292,14 +316,25 @@ class AEVNMT(nn.Module):
             if disable_main_loss:
                 elbo = - KL
 
-
-            loss = - (elbo + aux_log_likelihood - mdr_term)
+            side_elbo=aux_log_likelihood - KL
+            lag_side_loss=0.0
+            lag_side_term=0.0
+            #Lagrangian multiplier if needed
+            if self.lag_side is not None:
+                u = self.lagrangian_multiplier_side(aux_log_likelihood.device)
+                rate = -side_elbo
+                lag_side_term = u.detach() * (self.lag_side_target - rate)
+                lag_side_loss = - u * (self.lag_side_target - rate.detach())
+                out_dict['lag_side_loss'] = lag_side_loss
+                loss = - (elbo - lag_side_term)
+            else:
+                loss = - (elbo + aux_log_likelihood - mdr_term)
 
             # main log-likelihoods
             out_dict['lm/main'] = lm_log_likelihood
             out_dict['tm/main'] = tm_log_likelihood
             out_dict['ELBO']=elbo
-            out_dict['sideELBO']=aux_log_likelihood - KL
+            out_dict['sideELBO']=side_elbo
         else:
             assert disable_main_loss == False
             assert disable_side_losses == False
