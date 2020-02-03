@@ -172,7 +172,7 @@ options = {
     "evaluate_every": (int, -1, False, "The number of batches after which to run"
                                        " evaluation. If <= 0, evaluation will happen"
                                        " after every epoch.", 4),
-    "criterion": (str, "bleu", False, "Criterion for convergence checks ('bleu' or 'likelihood')", 4),
+    "criterion": (str, "bleu", False, "Criterion for convergence checks ('bleu' or 'likelihood' or 'side_likelihood')", 4),
     "REINFORCE": (bool, False, False, "Use REINFORCE to propagate the gradients to the inference network when sampling an x.", 4),
     "REINFORCE_weight": (float, 1.0, False, "Weight of SFE surrogate.", 4),
 
@@ -211,6 +211,7 @@ options = {
     "disable_KL_after_warmup": (bool, False, False, "Disable KL after side losses warmup", 6),
     "reset_main_decoder_after_warmup": (bool, False, False, "Reset main decoder after side losses warmup", 6),
     "disconnect_inference_network_after_warmup": (bool, False, False, "Disconnect inference network after side losses warmup", 6),
+    "disable_main_loss": (bool, False, False, "Train only side losses, always. Use me together with criterion 'side_likelihood' ", 6),
     "disable_tensorboard": (bool, False, False, "Disables logging data for TensorBoard. Saves disk space.", 6),
     "log_KL_x_post_prior_length": (int, 0, False, "Log KL between p(x|x<i,z) when z has been sampled from the posterior or sampled from the prior for sentences with this length. 0 disables logging.", 6),
 }
