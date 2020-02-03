@@ -440,7 +440,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
                           f"{title}/validation/attention", step)
 
     side_NLL=sum( v for k,v in val_NLLs.items() if "/main" not in k  )
-    return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl, 'side_NLL':side_NLL}
+    return {'bleu': val_bleu, 'likelihood': -val_NLL, 'nll': val_NLL, 'ppl': val_ppl, 'side_NLL':side_NLL, 'side_likelihood': -side_NLL}
 
 
 def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, deterministic=True,z=None, use_prior=False,input_sentences_y=None, use_reverse_lm=False, force_first_token=None):
