@@ -171,6 +171,12 @@ def senvae_monolingual_step_x(
         optimizers['mdr'].step()
         tracker.update('MRD/loss', mono_vae_terms['mdr_loss'].sum().item())
 
+    if hparams.lag_side is not None:
+        optimizers['lag_side'].zero_grad()
+        mono_vae_terms['lag_side_loss'].backward()
+        optimizers['lag_side'].step()
+        tracker.update('LagSide/loss', mono_vae_terms['lag_side_loss'].sum().item())
+
     # Update statistics.
     ELBO = mono_vae_terms['ELBO']
     sideELBO = mono_vae_terms['sideELBO']
@@ -399,7 +405,8 @@ def main():
         hparams,
         gen_parameters=model.generative_parameters(),
         inf_z_parameters=model.inference_parameters(),
-        mdr_parameters=model.mdr_parameters())
+        mdr_parameters=model.mdr_parameters(),
+        lag_side_parameters=model.lag_side_parameters())
     device = torch.device("cuda:0") if hparams.use_gpu else torch.device("cpu")
     model = model.to(device)
 

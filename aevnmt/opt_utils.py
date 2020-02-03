@@ -73,7 +73,7 @@ def get_lr_scheduler(optimizer, hparams):
     return scheduler
 
 
-def construct_optimizers(hparams, gen_parameters, inf_z_parameters, mdr_parameters=None):
+def construct_optimizers(hparams, gen_parameters, inf_z_parameters, mdr_parameters=None, lag_side_parameters=None):
     optimizers = {
         "gen": get_optimizer(
             hparams.gen_optimizer,
@@ -95,6 +95,14 @@ def construct_optimizers(hparams, gen_parameters, inf_z_parameters, mdr_paramete
         optimizers["mdr"] = get_optimizer(
             "rmsprop",
             mdr_parameters,
+            1e-3,
+            1e-4
+        )
+
+    if lag_side_parameters:
+        optimizers["lag_side"] = get_optimizer(
+            "rmsprop",
+            lag_side_parameters,
             1e-3,
             1e-4
         )

@@ -212,6 +212,7 @@ options = {
     "reset_main_decoder_after_warmup": (bool, False, False, "Reset main decoder after side losses warmup", 6),
     "disconnect_inference_network_after_warmup": (bool, False, False, "Disconnect inference network after side losses warmup", 6),
     "disable_main_loss": (bool, False, False, "Train only side losses, always. Use me together with criterion 'side_likelihood' ", 6),
+    "lag_side": (float,None,False,"Use lagrange multiplier to obtimize main ELBO subject to negative side ELBO is lower than this amount", 6),
     "disable_tensorboard": (bool, False, False, "Disables logging data for TensorBoard. Saves disk space.", 6),
     "log_KL_x_post_prior_length": (int, 0, False, "Log KL between p(x|x<i,z) when z has been sampled from the posterior or sampled from the prior for sentences with this length. 0 disables logging.", 6),
 }

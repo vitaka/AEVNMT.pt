@@ -307,7 +307,8 @@ def create_model(hparams, vocab_src, vocab_tgt):
         aux_tms=aux_tms,
         mixture_likelihood=hparams.mixture_likelihood,
         mixture_likelihood_dir_prior=hparams.mixture_likelihood_dir_prior,
-        mdr=hparams.mdr)
+        mdr=hparams.mdr,
+        lag_side=hparams.lag_side)
     return model
 
 def train_step(model, x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in, y_in, y_out, seq_mask_y, seq_len_y, noisy_y_in,
