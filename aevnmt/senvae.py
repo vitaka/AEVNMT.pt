@@ -237,20 +237,7 @@ def train(model,
         metrics = validate(model, data, vocab_src, None, device,
                             hparams, step, summary_writer=writer,num_importance_samples=num_importance_samples)
 
-        side_losses_vals.append(metrics['side_NLL'])
-        if hparams.side_losses_warmup_convergence_patience > 0 and only_side_losses_phase and min(side_losses_vals) not in side_losses_vals[-hparams.side_losses_warmup_convergence_patience:]:
-            if hparams.reset_main_decoder_after_warmup:
-                #reset main decoder
-                initialize_model(model.language_model, vocab_src[PAD_TOKEN], hparams.cell_type,
-                                 hparams.emb_init_scale, verbose=True)
-                optimizers["gen"] =
-                    "gen": get_optimizer(
-                        hparams.gen_optimizer,
-                        gen_parameters,
-                        hparams.gen_lr,
-                        hparams.gen_l2_weight)
-            only_side_losses_phase=False
-
+        
         if (not epoch_num <= hparams.side_losses_warmup) and not only_side_losses_phase:
             # Update the learning rate scheduler.
             cooldown=lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
@@ -262,6 +249,21 @@ def train(model,
             )
             if cooldown:
                 ckpt.cooldown_happened()
+        
+
+        side_losses_vals.append(metrics['side_NLL'])
+        if hparams.side_losses_warmup_convergence_patience > 0 and only_side_losses_phase and min(side_losses_vals) not in side_losses_vals[-hparams.side_losses_warmup_convergence_patience:]:
+            if hparams.reset_main_decoder_after_warmup:
+                #reset main decoder
+                initialize_model(model.language_model, vocab_src[PAD_TOKEN], hparams.cell_type,
+                                 hparams.emb_init_scale, verbose=True)
+                optimizers["gen"] =get_optimizer(
+                        hparams.gen_optimizer,
+                        model.generative_parameters(),
+                        hparams.gen_lr,
+                        hparams.gen_l2_weight)
+            only_side_losses_phase=False
+
         return only_side_losses_phase
 
     # Some statistics for training
