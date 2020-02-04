@@ -333,6 +333,7 @@ class AEVNMT(nn.Module):
                 #lag_side_loss, u should be zero
                 lag_side_loss = - u * ( rate.detach() - self.lag_side_target)
                 out_dict['lag_side_loss'] = lag_side_loss
+                out_dict['lag_difference']=rate.detach() - self.lag_side_target
                 loss = - (elbo - lag_side_term)
             else:
                 loss = - (elbo + aux_log_likelihood - mdr_term)
