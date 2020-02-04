@@ -324,7 +324,14 @@ class AEVNMT(nn.Module):
                 u = self.lagrangian_multiplier_side(aux_log_likelihood.device)
                 rate = -side_elbo.mean()
                 lag_side_term = u.detach() * (rate -  self.lag_side_target )
-                lag_side_loss = - u * (self.lag_side_target - rate.detach())
+                #If current neg. side ELBO > target neg. side ELBO, constraint
+                #has not been met. Difference is positive, in order to
+                #minimize lag_side_loss, u should be big
+
+                #If current neg. side ELBO < target neg. side ELBO, constraint
+                #has been met. Difference is negative, in order to minimize
+                #lag_side_loss, u should be zero
+                lag_side_loss = - u * ( rate.detach() - self.lag_side_target)
                 out_dict['lag_side_loss'] = lag_side_loss
                 loss = - (elbo - lag_side_term)
             else:
