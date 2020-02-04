@@ -116,6 +116,10 @@ def mono_vae_loss(
         writer.add_scalar('%s/KL' % title, loss['raw_KL'].mean(), step)
         writer.add_scalar('%s/LL' % title, (loss['lm/main']).mean(), step)
         writer.add_scalar('%s/ELBO' % title, loss['ELBO'].mean(), step)
+        if 'sideELBO' in loss:
+            writer.add_scalar('%s/sideELBO' % title, loss['sideELBO'].mean(), step)
+        if 'lag_side_loss' in loss:
+            writer.add_scalar('%s/lag_side_loss' % title, loss['lag_side_loss'].mean(), step)
 
     return loss
 
@@ -245,7 +249,7 @@ def train(model,
         metrics = validate(model, data, vocab_src, None, device,
                             hparams, step, summary_writer=writer,num_importance_samples=num_importance_samples)
 
-        
+
         if (not epoch_num <= hparams.side_losses_warmup) and not only_side_losses_phase:
             # Update the learning rate scheduler.
             cooldown=lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
@@ -257,7 +261,7 @@ def train(model,
             )
             if cooldown:
                 ckpt.cooldown_happened()
-        
+
 
         side_losses_vals.append(metrics['side_NLL'])
         if hparams.side_losses_warmup_convergence_patience > 0 and only_side_losses_phase and min(side_losses_vals) not in side_losses_vals[-hparams.side_losses_warmup_convergence_patience:]:
