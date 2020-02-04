@@ -338,8 +338,8 @@ def train(model,
                           f"x: {step_counter.step('x')} "
                           f"SenVAE(x) = {tracker_x.avg('SenVAE/ELBO', 'num_sentences'):,.2f} -- "
                           f"side(x) = {tracker_x.avg('SenVAE/sideELBO', 'num_sentences'):,.2f} -- "
-                          f"lag_side(x) = {tracker_x.avg('LagSide/loss', 'num_sentences'):,.2f} -- "
-                          f"lag_diff(x) = {tracker_x.avg('LagSide/difference', 'num_sentences'):,.2f} -- "
+                          f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} -- "
+                          f"lag_diff(x) = {tracker_x.mean('LagSide/difference'):,.2f} -- "
                           f"{tokens_per_sec:,.0f} tokens/s -- "
                           f"{elapsed:,.0f} s -- ")
 
