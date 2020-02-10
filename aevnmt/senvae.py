@@ -332,15 +332,22 @@ def train(model,
 
                 # Print training stats every now and again.
                 if step_counter.step('x') % hparams.print_every == 0:
+
                     elapsed = time.time() - tokens_start
                     num_tokens = tracker_x.sum('num_tokens')
                     tokens_per_sec = num_tokens / elapsed if step_counter.step() != 0 else 0
+                    bias=0.0
+                    u=0.0
+                    if model.lag_side is not None:
+                        bias=model.lag_side[1].bias.item()
+                        with torch.no_grad():
+                            u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
                     print(f"({epoch_num}) step {step_counter.step()} "
                           f"x: {step_counter.step('x')} "
                           f"SenVAE(x) = {tracker_x.avg('SenVAE/ELBO', 'num_sentences'):,.2f} -- "
                           f"side(x) = {tracker_x.avg('SenVAE/sideELBO', 'num_sentences'):,.2f} -- "
                           f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
-                          f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} -- "
+                          f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
                           f"lag_diff(x) = {tracker_x.mean('LagSide/difference'):,.2f} -- "
                           f"{tokens_per_sec:,.0f} tokens/s -- "
                           f"{elapsed:,.0f} s -- ")
