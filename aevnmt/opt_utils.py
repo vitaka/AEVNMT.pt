@@ -103,7 +103,7 @@ def construct_optimizers(hparams, gen_parameters, inf_z_parameters, mdr_paramete
         optimizers["lag_side"] = get_optimizer(
             "rmsprop",
             lag_side_parameters,
-            1e-3,
+            1e-2,
             1e-4
         )
 
