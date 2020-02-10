@@ -244,7 +244,7 @@ def train(model,
 
 
     # Define the evaluation function.
-    def run_evaluation(step,only_side_losses_phase,data,writer=summary_writer,num_importance_samples=10):
+    def run_evaluation(step,only_side_losses_phase,data,writer=summary_writer,num_importance_samples=10,save_checkpoint=True):
         # Perform model validation, keep track of validation BLEU for model
         # selection.
         model.eval()
@@ -252,7 +252,7 @@ def train(model,
                             hparams, step, summary_writer=writer,num_importance_samples=num_importance_samples)
 
 
-        if (not epoch_num <= hparams.side_losses_warmup) and not only_side_losses_phase:
+        if (not epoch_num <= hparams.side_losses_warmup) and not only_side_losses_phase and save_checkpoint:
             # Update the learning rate scheduler.
             cooldown=lr_scheduler_step(lr_schedulers, hparams, val_score=metrics[hparams.criterion])
 
@@ -328,7 +328,14 @@ def train(model,
 
                 # Run evaluation every evaluate_every steps if set (always after a bilingual batch)
                 if hparams.evaluate_every > 0 and step_counter.step('x') % hparams.evaluate_every == 0:
-                    only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data)
+                    save_eval=True
+                    if model.lag_side is not None:
+                        bias=model.lag_side[1].bias.item()
+                        with torch.no_grad():
+                            u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
+                            if u > 0.1:
+                                save_eval=False
+                    only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data, save_checkpoint=save_eval)
 
                 # Print training stats every now and again.
                 if step_counter.step('x') % hparams.print_every == 0:
