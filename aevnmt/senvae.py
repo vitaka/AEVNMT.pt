@@ -162,6 +162,10 @@ def senvae_monolingual_step_x(
         nn.utils.clip_grad_norm_(parameters=model.parameters(),
                                  max_norm=hparams.max_gradient_norm,
                                  norm_type=float("inf"))
+    if step % hparams.print_every == 0 and hparams.print_gradients:
+        print("Gradients:")
+        for p in list(filter(lambda p: p.grad is not None, net.parameters())):
+            print(p.grad.data.norm(2).item())
 
     optimizers['gen'].step()
     optimizers['inf_z'].step()

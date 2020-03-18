@@ -187,6 +187,7 @@ options = {
                                                 " ignored for training.", 5),
     "translation_ref_file": (str, None, False, "The translation references file", 5),
     "verbose": (bool, False, False, "Print logging information", 5),
+    "print_gradients": (bool, False, False, "Print gradient norms", 5),
     "show_raw_output": (bool, False, False, "Prints raw output (tokenized, truecased, BPE-segmented, max-len splitting) to stderr", 5),
     "interactive_translation": (int, 0, False, "If n more than 0, reads n sentences from stdin and translates them to stdout", 5),
     "split_sentences": (bool, False, False, "Pass the whole input through a sentence splitter (mosestokenizer.MosesSentenceSplitter)", 5),
