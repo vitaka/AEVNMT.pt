@@ -185,7 +185,9 @@ def senvae_monolingual_step_x(
     # Update statistics.
     ELBO = mono_vae_terms['ELBO']
     sideELBO = mono_vae_terms['sideELBO']
+    ll=mono_vae_terms['lm/main']
     tracker.update('SenVAE/ELBO', ELBO.sum().item())
+    tracker.update('SenVAE/ll', ll.sum().item())
     tracker.update('SenVAE/sideELBO', sideELBO.sum().item())
     tracker.update('SenVAE/sideLoss', sideELBO.sum().item())
     tracker.update('num_tokens', seq_len.sum().item())
@@ -352,6 +354,7 @@ def train(model,
                     print(f"({epoch_num}) step {step_counter.step()} "
                           f"x: {step_counter.step('x')} "
                           f"SenVAE(x) = {tracker_x.avg('SenVAE/ELBO', 'num_sentences'):,.2f} -- "
+                          f"ll(x) = {tracker_x.avg('SenVAE/LL', 'num_sentences'):,.2f} -- "
                           f"side(x) = {tracker_x.avg('SenVAE/sideELBO', 'num_sentences'):,.2f} -- "
                           f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
                           f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
