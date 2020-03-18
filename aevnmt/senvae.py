@@ -354,7 +354,7 @@ def train(model,
                     print(f"({epoch_num}) step {step_counter.step()} "
                           f"x: {step_counter.step('x')} "
                           f"SenVAE(x) = {tracker_x.avg('SenVAE/ELBO', 'num_sentences'):,.2f} -- "
-                          f"ll(x) = {tracker_x.avg('SenVAE/LL', 'num_sentences'):,.2f} -- "
+                          f"ll(x) = {tracker_x.avg('SenVAE/ll', 'num_sentences'):,.2f} -- "
                           f"side(x) = {tracker_x.avg('SenVAE/sideELBO', 'num_sentences'):,.2f} -- "
                           f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
                           f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
