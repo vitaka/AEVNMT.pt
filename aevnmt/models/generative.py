@@ -247,6 +247,12 @@ class CorrelatedPoissonsLM(GenerativeLM):
         # [B, V] -> [B]
         return likelihood.log_prob(counts).sum(-1)
 
+    def log_prob_norm(self, likelihood: Poisson, x):
+        # [B, V]
+        counts = self.make_counts(x)
+        # [B, V] -> [B]
+        return likelihood.log_prob(counts).sum(-1)/counts.size(-1)
+
     def sample(self, z, max_len=None, greedy=False, state=dict()):
         """
         Sample from X|z where z [B, Dz]
