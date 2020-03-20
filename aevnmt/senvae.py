@@ -189,11 +189,15 @@ def senvae_monolingual_step_x(
     # Update statistics.
     ELBO = mono_vae_terms['ELBO']
     sideELBO = mono_vae_terms['sideELBO']
+    sideELBOTokenNorm = mono_vae_terms['sideELBO_per_token_norm']
+    sideLossTokenNorm = mono_vae_terms['side_per_token_norm']
     ll=mono_vae_terms['lm/main']
     tracker.update('SenVAE/ELBO', ELBO.sum().item())
     tracker.update('SenVAE/ll', ll.sum().item())
     tracker.update('SenVAE/sideELBO', sideELBO.sum().item())
     tracker.update('SenVAE/sideLoss', sideELBO.sum().item())
+    tracker.update('SenVAE/sideELBOTokenNorm', sideELBOTokenNorm.sum().item())
+    tracker.update('SenVAE/sideLossTokenNorm', sideLossTokenNorm.sum().item())
     tracker.update('num_tokens', seq_len.sum().item())
     tracker.update('num_sentences', inputs.size(0))
 
@@ -360,7 +364,9 @@ def train(model,
                           f"SenVAE(x) = {tracker_x.avg('SenVAE/ELBO', 'num_sentences'):,.2f} -- "
                           f"ll(x) = {tracker_x.avg('SenVAE/ll', 'num_sentences'):,.2f} -- "
                           f"side(x) = {tracker_x.avg('SenVAE/sideELBO', 'num_sentences'):,.2f} -- "
-                          f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
+#                          f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
+                          f"tokennorm_side_loss(x) = {tracker_x.avg('SenVAE/sideLossTokenNorm','num_sentences'):,.2f} -- "
+                          f"tokennorm_side_ELBO(x) = {tracker_x.avg('SenVAE/sideELBOTokenNorm','num_sentences'):,.2f} -- "
                           f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
                           f"lag_diff(x) = {tracker_x.mean('LagSide/difference'):,.2f} -- "
                           f"{tokens_per_sec:,.0f} tokens/s -- "
