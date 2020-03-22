@@ -470,7 +470,12 @@ def main():
                          hparams.emb_init_scale, verbose=True)
     else:
         print(f"\nRestoring model parameters from {hparams.model_checkpoint}...")
-        model.load_state_dict(torch.load(hparams.model_checkpoint))
+        model.load_state_dict(torch.load(hparams.model_checkpoint,map_location=torch.device('cpu')))#TODO: remove map_location
+        if hparams.reset_main_decoder_at_start:
+            print(f"\nResetting main decoder...")
+            initialize_model(model.language_model, vocab_src[PAD_TOKEN], hparams.cell_type,
+                             hparams.emb_init_scale, verbose=True)
+
 
     # Create the output directories.
     out_dir = Path(hparams.output_dir)

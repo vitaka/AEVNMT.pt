@@ -23,7 +23,7 @@ class AEVNMT(nn.Module):
             feed_z=False,
             aux_lms: Dict[str, GenerativeLM]=dict(), aux_tms: Dict[str, GenerativeTM]=dict(),
             mixture_likelihood=False, mixture_likelihood_dir_prior=0.0,
-            mdr=False, lag_side=None):
+            mdr=False, lag_side=None, lag_side_normtok=False):
         super().__init__()
         self.src_embedder = src_embedder
         self.tgt_embedder = tgt_embedder
@@ -57,6 +57,7 @@ class AEVNMT(nn.Module):
         else:
             self.lag_side= None
             self.lag_side_target=None
+        self.lag_side_normtok=lag_side_normtok
 
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
@@ -335,7 +336,10 @@ class AEVNMT(nn.Module):
             #Lagrangian multiplier if needed
             if self.lag_side is not None:
                 u = self.lagrangian_multiplier_side(aux_log_likelihood.device)
-                rate = -side_elbo.mean()
+                if self.lag_side_normtok:
+                    rate = -aux_log_likelihood_per_token_norm.mean()
+                else:
+                    rate = -aux_log_likelihood.mean()
                 lag_side_term = u.detach() * (rate -  self.lag_side_target )
                 #If current neg. side ELBO > target neg. side ELBO, constraint
                 #has not been met. Difference is positive, in order to
