@@ -308,7 +308,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
         mixture_likelihood=hparams.mixture_likelihood,
         mixture_likelihood_dir_prior=hparams.mixture_likelihood_dir_prior,
         mdr=hparams.mdr,
-        lag_side=hparams.lag_side
+        lag_side=hparams.lag_side,
         lag_side_normtok=hparams.lag_side_normtok)
     return model
 

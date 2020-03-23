@@ -470,7 +470,10 @@ def main():
                          hparams.emb_init_scale, verbose=True)
     else:
         print(f"\nRestoring model parameters from {hparams.model_checkpoint}...")
-        model.load_state_dict(torch.load(hparams.model_checkpoint,map_location=torch.device('cpu')))#TODO: remove map_location
+        loadresult= model.load_state_dict(torch.load(hparams.model_checkpoint),strict=False)
+        if 'lag_side.1.weight' in loadresult.missing_keys:
+            initialize_model(model.lag_side, vocab_src[PAD_TOKEN], hparams.cell_type,
+                             hparams.emb_init_scale, verbose=True)
         if hparams.reset_main_decoder_at_start:
             print(f"\nResetting main decoder...")
             initialize_model(model.language_model, vocab_src[PAD_TOKEN], hparams.cell_type,
