@@ -348,7 +348,7 @@ def train(model,
                         bias=model.lag_side[1].bias.item()
                         with torch.no_grad():
                             u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
-                            if u > 0.1:
+                            if u > 0.5:
                                 save_eval=False
                     only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data, save_checkpoint=save_eval)
 
