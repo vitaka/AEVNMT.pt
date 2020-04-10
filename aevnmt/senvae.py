@@ -116,6 +116,7 @@ def mono_vae_loss(
         writer.add_scalar('%s/KL' % title, loss['raw_KL'].mean(), step)
         writer.add_scalar('%s/LL' % title, (loss['lm/main']).mean(), step)
         writer.add_scalar('%s/ELBO' % title, loss['ELBO'].mean(), step)
+        writer.add_scalar('%s/loss' % title, loss['loss'], step)
         if 'sideELBO' in loss:
             writer.add_scalar('%s/sideELBO' % title, loss['sideELBO'].mean(), step)
         if 'lag_side_loss' in loss:
