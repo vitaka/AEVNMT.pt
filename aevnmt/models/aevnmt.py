@@ -23,7 +23,7 @@ class AEVNMT(nn.Module):
             feed_z=False,
             aux_lms: Dict[str, GenerativeLM]=dict(), aux_tms: Dict[str, GenerativeTM]=dict(),
             mixture_likelihood=False, mixture_likelihood_dir_prior=0.0,
-            mdr=False, lag_side=None, lag_side_normtok=False):
+            mdr=False, lag_side=None, lag_side_normtok=False, lag_side_elbo=False):
         super().__init__()
         self.src_embedder = src_embedder
         self.tgt_embedder = tgt_embedder
@@ -58,6 +58,7 @@ class AEVNMT(nn.Module):
             self.lag_side= None
             self.lag_side_target=None
         self.lag_side_normtok=lag_side_normtok
+        self.lag_side_elbo=lag_side_elbo
 
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
