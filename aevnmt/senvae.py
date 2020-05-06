@@ -121,6 +121,8 @@ def mono_vae_loss(
             writer.add_scalar('%s/sideELBO' % title, loss['sideELBO'].mean(), step)
         if 'lag_side_loss' in loss:
             writer.add_scalar('%s/lag_side_loss' % title, loss['lag_side_loss'].mean(), step)
+        if 'lag_u' in loss:
+            writer.add_scalar('%s/lag_u' % title, loss['lag_u'], step)
 
     return loss
 
@@ -186,6 +188,7 @@ def senvae_monolingual_step_x(
         optimizers['lag_side'].step()
         tracker.update('LagSide/loss', mono_vae_terms['lag_side_loss'].sum().item())
         tracker.update('LagSide/difference', mono_vae_terms['lag_difference'].sum().item())
+        tracker.update('LagSide/u', mono_vae_terms['lag_u'].item())
 
     # Update statistics.
     ELBO = mono_vae_terms['ELBO']
