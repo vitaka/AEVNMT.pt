@@ -399,7 +399,7 @@ def main():
     hparams.save(out_dir / "hparams")
     print("\n==== Output")
     print(f"Created output directory at {hparams.output_dir}")
-
+ 
     # Load/construct and possibly save vocabulary
     vocab_src = load_vocabularies_senvae(hparams)
     if hparams.vocab_prefix is None:
