@@ -233,7 +233,10 @@ def train(model,
         batch_size=hparams.batch_size,
         shuffle=True,
         num_workers=4)
-    bucketing_dl_x = BucketingTextDataLoader(dl_x)  # n=1 to synchronise with dl_yx
+    if hparams.disable_bucketing:
+        bucketing_dl_x = BucketingTextDataLoader(dl_x,n=1) 
+    else:
+        bucketing_dl_x = BucketingTextDataLoader(dl_x)  # n=1 to synchronise with dl_yx
 
     if hparams.disable_tensorboard:
         summary_writer =None
@@ -421,7 +424,7 @@ def main():
     hparams.save(out_dir / "hparams")
     print("\n==== Output")
     print(f"Created output directory at {hparams.output_dir}")
- 
+
     # Load/construct and possibly save vocabulary
     vocab_src = load_vocabularies_senvae(hparams)
     if hparams.vocab_prefix is None:
