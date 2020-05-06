@@ -247,6 +247,12 @@ class CorrelatedPoissonsLM(GenerativeLM):
         # [B, V] -> [B]
         return likelihood.log_prob(counts).sum(-1)
 
+    def log_prob_norm(self, likelihood: Poisson, x):
+        # [B, V]
+        counts = self.make_counts(x)
+        # [B, V] -> [B]
+        return likelihood.log_prob(counts).sum(-1)/counts.size(-1)
+
     def sample(self, z, max_len=None, greedy=False, state=dict()):
         """
         Sample from X|z where z [B, Dz]
@@ -314,7 +320,7 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         #x_embed: [B,D_emb]
         #hidden: [1, B, D_hidden]
         #z: [B, D_latent]
-        
+
         #[B, 1, D]
         rnn_input = x_embed.unsqueeze(1)
         if self.feed_z:
@@ -352,6 +358,11 @@ class CorrelatedCategoricalsLM(GenerativeLM):
     def log_prob(self, likelihood: Categorical, x):
         # [B, Tx] -> [B]
         return (likelihood.log_prob(x) * (x != self.pad_idx).float()).sum(-1)
+
+    def log_prob_norm(self, likelihood: Categorical, x):
+        #import pdb; pdb.set_trace()
+        # [B, Tx] -> [B]
+        return (likelihood.log_prob(x) * (x != self.pad_idx).float()).sum(-1)/(x != self.pad_idx).float().sum(-1)
 
     def sample(self, z, max_len=100, greedy=False, state=dict()):
         """

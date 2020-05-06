@@ -116,6 +116,7 @@ def mono_vae_loss(
         writer.add_scalar('%s/KL' % title, loss['raw_KL'].mean(), step)
         writer.add_scalar('%s/LL' % title, (loss['lm/main']).mean(), step)
         writer.add_scalar('%s/ELBO' % title, loss['ELBO'].mean(), step)
+        writer.add_scalar('%s/loss' % title, loss['loss'], step)
         if 'sideELBO' in loss:
             writer.add_scalar('%s/sideELBO' % title, loss['sideELBO'].mean(), step)
         if 'lag_side_loss' in loss:
@@ -162,6 +163,10 @@ def senvae_monolingual_step_x(
         nn.utils.clip_grad_norm_(parameters=model.parameters(),
                                  max_norm=hparams.max_gradient_norm,
                                  norm_type=float("inf"))
+    if step % hparams.print_every == 0 and hparams.print_gradients:
+        print("Gradients:")
+        for p in list(filter(lambda p: p[1].grad is not None, model.named_parameters())):
+            print("{} {}".format(p[0],p[1].grad.data.norm(2).item() ))
 
     optimizers['gen'].step()
     optimizers['inf_z'].step()
@@ -185,9 +190,20 @@ def senvae_monolingual_step_x(
     # Update statistics.
     ELBO = mono_vae_terms['ELBO']
     sideELBO = mono_vae_terms['sideELBO']
+    sideNLL=mono_vae_terms['side']
+    #sideELBOTokenNorm = mono_vae_terms['sideELBO_per_token_norm']
+    #sideLossTokenNorm = mono_vae_terms['side_per_token_norm']
+    for k in mono_vae_terms:
+        if k.endswith("_normtok"):
+            tracker.update(k,mono_vae_terms[k].sum().item())
+    ll=mono_vae_terms['lm/main']
     tracker.update('SenVAE/ELBO', ELBO.sum().item())
+    tracker.update('SenVAE/ll', ll.sum().item())
     tracker.update('SenVAE/sideELBO', sideELBO.sum().item())
-    tracker.update('SenVAE/sideLoss', sideELBO.sum().item())
+    tracker.update('SenVAE/sideLL', sideNLL.sum().item())
+    tracker.update('SenVAE/KL', mono_vae_terms['KL'].sum().item())
+    #tracker.update('SenVAE/sideELBOTokenNorm', sideELBOTokenNorm.sum().item())
+    #tracker.update('SenVAE/sideLossTokenNorm', sideLossTokenNorm.sum().item())
     tracker.update('num_tokens', seq_len.sum().item())
     tracker.update('num_sentences', inputs.size(0))
 
@@ -333,7 +349,7 @@ def train(model,
                         bias=model.lag_side[1].bias.item()
                         with torch.no_grad():
                             u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
-                            if u > 0.1:
+                            if u > 0.5:
                                 save_eval=False
                     only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data, save_checkpoint=save_eval)
 
@@ -349,11 +365,17 @@ def train(model,
                         bias=model.lag_side[1].bias.item()
                         with torch.no_grad():
                             u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
+                    sidenormtok=" ".join( f"{k} = {tracker_x.avg(k,'num_sentences'):,.2f} --" for k in tracker_x.stats if k.endswith("_normtok") )
                     print(f"({epoch_num}) step {step_counter.step()} "
                           f"x: {step_counter.step('x')} "
                           f"SenVAE(x) = {tracker_x.avg('SenVAE/ELBO', 'num_sentences'):,.2f} -- "
-                          f"side(x) = {tracker_x.avg('SenVAE/sideELBO', 'num_sentences'):,.2f} -- "
-                          f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
+                          f"ll(x) = {tracker_x.avg('SenVAE/ll', 'num_sentences'):,.2f} -- "
+                          f"KL = {tracker_x.avg('SenVAE/KL', 'num_sentences'):,.2f} -- "
+                          f"sideELBO(x) = {tracker_x.avg('SenVAE/sideELBO', 'num_sentences'):,.2f} --"
+                          f"side_ll(x) = {tracker_x.avg('SenVAE/sideLL', 'num_sentences'):,.2f} -- {sidenormtok}"
+#                          f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
+                          #f"tokennorm_side_loss(x) = {tracker_x.avg('SenVAE/sideLossTokenNorm','num_sentences'):,.2f} -- "
+                          #f"tokennorm_side_ELBO(x) = {tracker_x.avg('SenVAE/sideELBOTokenNorm','num_sentences'):,.2f} -- "
                           f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
                           f"lag_diff(x) = {tracker_x.mean('LagSide/difference'):,.2f} -- "
                           f"{tokens_per_sec:,.0f} tokens/s -- "
@@ -449,7 +471,15 @@ def main():
                          hparams.emb_init_scale, verbose=True)
     else:
         print(f"\nRestoring model parameters from {hparams.model_checkpoint}...")
-        model.load_state_dict(torch.load(hparams.model_checkpoint))
+        loadresult= model.load_state_dict(torch.load(hparams.model_checkpoint),strict=False)
+        if 'lag_side.1.weight' in loadresult.missing_keys:
+            initialize_model(model.lag_side, vocab_src[PAD_TOKEN], hparams.cell_type,
+                             hparams.emb_init_scale, verbose=True)
+        if hparams.reset_main_decoder_at_start:
+            print(f"\nResetting main decoder...")
+            initialize_model(model.language_model, vocab_src[PAD_TOKEN], hparams.cell_type,
+                             hparams.emb_init_scale, verbose=True)
+
 
     # Create the output directories.
     out_dir = Path(hparams.output_dir)

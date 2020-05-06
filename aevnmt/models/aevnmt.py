@@ -23,7 +23,7 @@ class AEVNMT(nn.Module):
             feed_z=False,
             aux_lms: Dict[str, GenerativeLM]=dict(), aux_tms: Dict[str, GenerativeTM]=dict(),
             mixture_likelihood=False, mixture_likelihood_dir_prior=0.0,
-            mdr=False, lag_side=None):
+            mdr=False, lag_side=None, lag_side_normtok=False):
         super().__init__()
         self.src_embedder = src_embedder
         self.tgt_embedder = tgt_embedder
@@ -57,6 +57,7 @@ class AEVNMT(nn.Module):
         else:
             self.lag_side= None
             self.lag_side_target=None
+        self.lag_side_normtok=lag_side_normtok
 
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
@@ -221,8 +222,11 @@ class AEVNMT(nn.Module):
     def log_likelihood_tm(self, comp_name, likelihood: Distribution, y):
         return self.aux_tms[comp_name].log_prob(likelihood, y)
 
-    def log_likelihood_lm(self, comp_name, likelihood: Distribution, x):
-        return self.aux_lms[comp_name].log_prob(likelihood, x)
+    def log_likelihood_lm(self, comp_name, likelihood: Distribution, x, per_token_norm=False):
+        if per_token_norm:
+            return self.aux_lms[comp_name].log_prob_norm(likelihood, x)
+        else:
+            return self.aux_lms[comp_name].log_prob(likelihood, x)
 
     def loss(self, tm_likelihood: Categorical, lm_likelihood: Categorical, targets_y, targets_x, targets_y_shuf, targets_x_shuf, qz: Distribution,
             free_nats=0., KL_weight=1., reduction="mean", aux_lm_likelihoods=dict(), aux_tm_likelihoods=dict(),disable_main_loss=False, disable_side_losses=False):
@@ -284,12 +288,20 @@ class AEVNMT(nn.Module):
         # Alternative views of p(x|z)
         # [Cx, B]
         side_lm_likelihood = torch.zeros([len(aux_lm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
+        side_lm_likelihood_per_token_norm = torch.zeros([len(aux_lm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
         for c, (aux_name, aux_likelihood) in enumerate(aux_lm_likelihoods.items()):
             out_dict['lm/' + aux_name] = self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuf if aux_name == "shuffled" else targets_x )
+            if aux_name in [ "shuffled", "count_made" ]:
+                #Create a new loss normalized by number of tokens
+                out_dict['lm/' + aux_name + '_normtok'] = self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuf if aux_name == "shuffled" else targets_x ,per_token_norm=True)
+            else:
+                out_dict['lm/' + aux_name + '_normtok'] = out_dict['lm/' + aux_name]
+
             w=1.0
             if hasattr(self.aux_lms[aux_name],'normalize_weight') and self.aux_lms[aux_name].normalize_weight:
                 w=targets_x.size(1)/(1.0*self.aux_lms[aux_name].vocab_size)
             side_lm_likelihood[c] = out_dict['lm/' + aux_name]
+            side_lm_likelihood_per_token_norm[c] = out_dict['lm/' + aux_name + '_normtok']
 
         # Alternative views of p(y|z,x)
         # [Cy, B]
@@ -311,18 +323,23 @@ class AEVNMT(nn.Module):
             elbo = tm_log_likelihood + lm_log_likelihood - KL
             # we sum the alternative views (as in multitask learning)
             aux_log_likelihood = side_lm_likelihood.sum(0) + side_tm_likelihood.sum(0)
+            aux_log_likelihood_per_token_norm = side_lm_likelihood_per_token_norm.sum(0)
             if disable_side_losses:
                 aux_log_likelihood=0.0
             if disable_main_loss:
                 elbo = - KL
 
             side_elbo=aux_log_likelihood - KL
+            side_elbo_per_token_norm=aux_log_likelihood_per_token_norm - KL
             lag_side_loss=0.0
             lag_side_term=0.0
             #Lagrangian multiplier if needed
             if self.lag_side is not None:
                 u = self.lagrangian_multiplier_side(aux_log_likelihood.device)
-                rate = -side_elbo.mean()
+                if self.lag_side_normtok:
+                    rate = -aux_log_likelihood_per_token_norm.mean()
+                else:
+                    rate = -aux_log_likelihood.mean()
                 lag_side_term = u.detach() * (rate -  self.lag_side_target )
                 #If current neg. side ELBO > target neg. side ELBO, constraint
                 #has not been met. Difference is positive, in order to
@@ -342,8 +359,10 @@ class AEVNMT(nn.Module):
             out_dict['lm/main'] = lm_log_likelihood
             out_dict['tm/main'] = tm_log_likelihood
             out_dict['side'] = aux_log_likelihood
+            out_dict['side_per_token_norm'] = aux_log_likelihood_per_token_norm
             out_dict['ELBO']=elbo
             out_dict['sideELBO']=side_elbo
+            out_dict['sideELBO_per_token_norm']=side_elbo_per_token_norm
         else:
             assert disable_main_loss == False
             assert disable_side_losses == False
