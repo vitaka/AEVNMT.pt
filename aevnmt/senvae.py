@@ -191,7 +191,7 @@ def senvae_monolingual_step_x(
     ELBO = mono_vae_terms['ELBO']
     sideELBO = mono_vae_terms['sideELBO']
     sideNLL=mono_vae_terms['side']
-    #sideELBOTokenNorm = mono_vae_terms['sideELBO_per_token_norm']
+    sideELBOTokenNorm = mono_vae_terms['sideELBO_per_token_norm']
     #sideLossTokenNorm = mono_vae_terms['side_per_token_norm']
     for k in mono_vae_terms:
         if k.endswith("_normtok"):
@@ -202,7 +202,7 @@ def senvae_monolingual_step_x(
     tracker.update('SenVAE/sideELBO', sideELBO.sum().item())
     tracker.update('SenVAE/sideLL', sideNLL.sum().item())
     tracker.update('SenVAE/KL', mono_vae_terms['KL'].sum().item())
-    #tracker.update('SenVAE/sideELBOTokenNorm', sideELBOTokenNorm.sum().item())
+    tracker.update('SenVAE/sideELBOTokenNorm', sideELBOTokenNorm.sum().item())
     #tracker.update('SenVAE/sideLossTokenNorm', sideLossTokenNorm.sum().item())
     tracker.update('num_tokens', seq_len.sum().item())
     tracker.update('num_sentences', inputs.size(0))
@@ -234,7 +234,7 @@ def train(model,
         shuffle=True,
         num_workers=4)
     if hparams.disable_bucketing:
-        bucketing_dl_x = BucketingTextDataLoader(dl_x,n=1) 
+        bucketing_dl_x = BucketingTextDataLoader(dl_x,n=1)
     else:
         bucketing_dl_x = BucketingTextDataLoader(dl_x)  # n=1 to synchronise with dl_yx
 
@@ -378,7 +378,7 @@ def train(model,
                           f"side_ll(x) = {tracker_x.avg('SenVAE/sideLL', 'num_sentences'):,.2f} -- {sidenormtok}"
 #                          f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
                           #f"tokennorm_side_loss(x) = {tracker_x.avg('SenVAE/sideLossTokenNorm','num_sentences'):,.2f} -- "
-                          #f"tokennorm_side_ELBO(x) = {tracker_x.avg('SenVAE/sideELBOTokenNorm','num_sentences'):,.2f} -- "
+                          f"tokennorm_side_ELBO(x) = {tracker_x.avg('SenVAE/sideELBOTokenNorm','num_sentences'):,.2f} -- "
                           f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
                           f"lag_diff(x) = {tracker_x.mean('LagSide/difference'):,.2f} -- "
                           f"{tokens_per_sec:,.0f} tokens/s -- "

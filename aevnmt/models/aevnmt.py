@@ -336,10 +336,16 @@ class AEVNMT(nn.Module):
             #Lagrangian multiplier if needed
             if self.lag_side is not None:
                 u = self.lagrangian_multiplier_side(aux_log_likelihood.device)
-                if self.lag_side_normtok:
-                    rate = -aux_log_likelihood_per_token_norm.mean()
+                if self.lag_side_elbo:
+                    if self.lag_side_normtok:
+                        rate = -side_elbo_per_token_norm.mean()
+                    else:
+                        rate = -side_elbo.mean()
                 else:
-                    rate = -aux_log_likelihood.mean()
+                    if self.lag_side_normtok:
+                        rate = -aux_log_likelihood_per_token_norm.mean()
+                    else:
+                        rate = -aux_log_likelihood.mean()
                 lag_side_term = u.detach() * (rate -  self.lag_side_target )
                 #If current neg. side ELBO > target neg. side ELBO, constraint
                 #has not been met. Difference is positive, in order to
