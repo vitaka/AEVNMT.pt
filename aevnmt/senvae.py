@@ -484,7 +484,7 @@ def main():
         if hparams.reset_main_decoder_at_start:
             print(f"\nResetting main decoder...")
             initialize_model(model.language_model, vocab_src[PAD_TOKEN], hparams.cell_type,
-                             hparams.emb_init_scale, verbose=True,skip_embeddings=True)
+                             hparams.emb_init_scale, verbose=True,skip_embeddings=not hparams.independent_embeddings_side)
 
 
     # Create the output directories.
