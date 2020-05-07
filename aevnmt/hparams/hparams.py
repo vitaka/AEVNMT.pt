@@ -208,6 +208,7 @@ options = {
     "side_losses_warmup": (int, 0, False, "Optimize only side losses for a number of epochs", 6),
     "side_losses_warmup_convergence_patience": (int, 0, False, "Optimize only side losses until their validation ppl stops improving", 6),
     "disable_side_losses_after_warmup": (bool, False, False, "Train only main objective after side losses warmup", 6),
+    "disable_side_losses": (bool, False, False, "Train only main objective", 6),
     "keep_main_loss_during_warmup": (bool, False, False, "Train also main objective during warm-up", 6),
     "disable_KL_after_warmup": (bool, False, False, "Disable KL after side losses warmup", 6),
     "reset_main_decoder_after_warmup": (bool, False, False, "Reset main decoder after side losses warmup", 6),

@@ -340,7 +340,7 @@ def train(model,
                     writer=summary_writer if step_counter.step('x') % hparams.print_every == 0 else None,
                     title="mono_src/SenVAE",
                     disable_main_loss= ( ( (epoch_num <= hparams.side_losses_warmup) or only_side_losses_phase) and not hparams.keep_main_loss_during_warmup ) or hparams.disable_main_loss,
-                    disable_side_losses =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup),
+                    disable_side_losses =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_side_losses_after_warmup) or hparams.disable_side_losses,
                     disable_kl =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disable_KL_after_warmup),
                     disconnect_inference_network =(( (epoch_num > hparams.side_losses_warmup and  hparams.side_losses_warmup > 0 ) or (hparams.side_losses_warmup_convergence_patience > 0 and not only_side_losses_phase)) and hparams.disconnect_inference_network_after_warmup)
 
