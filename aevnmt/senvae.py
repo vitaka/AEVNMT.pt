@@ -203,7 +203,7 @@ def senvae_monolingual_step_x(
     tracker.update('SenVAE/ELBO', ELBO.sum().item())
     tracker.update('SenVAE/ll', ll.sum().item())
     tracker.update('SenVAE/sideELBO', sideELBO.sum().item())
-    tracker.update('SenVAE/sideLL', sideNLL.sum().item())
+    tracker.update('SenVAE/sideLL', sideNLL.sum().item() if not hparams.disable_side_losses else sideNLL)
     tracker.update('SenVAE/KL', mono_vae_terms['KL'].sum().item())
     tracker.update('SenVAE/sideELBOTokenNorm', sideELBOTokenNorm.sum().item())
     #tracker.update('SenVAE/sideLossTokenNorm', sideLossTokenNorm.sum().item())
