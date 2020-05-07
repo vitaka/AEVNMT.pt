@@ -486,6 +486,10 @@ def main():
             initialize_model(model.language_model, vocab_src[PAD_TOKEN], hparams.cell_type,
                              hparams.emb_init_scale, verbose=True,skip_embeddings=not hparams.independent_embeddings_side)
 
+    #Custom initialization of lagrangian multiplier
+    if hparams.init_lag_side_uniform:
+        print("Initilazing Lagrange multiplier weight to 1 for side losses")
+        nn.init.constant_(model.lag_side.named_parameters['1.bias'],0.55)
 
     # Create the output directories.
     out_dir = Path(hparams.output_dir)
