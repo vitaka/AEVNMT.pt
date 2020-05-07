@@ -236,6 +236,7 @@ def create_inference_model(src_embedder, tgt_embedder, hparams) -> InferenceMode
 def create_model(hparams, vocab_src, vocab_tgt):
     # Generative components
     src_embedder = torch.nn.Embedding(vocab_src.size(), hparams.emb_size, padding_idx=vocab_src[PAD_TOKEN])
+
     tgt_embedder=None
     if vocab_tgt is not None:
         tgt_embedder = torch.nn.Embedding(vocab_tgt.size(), hparams.emb_size, padding_idx=vocab_tgt[PAD_TOKEN])
@@ -255,7 +256,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
     )
 
     # Auxiliary generative components
-    aux_lms = create_aux_language_models(vocab_src, src_embedder, hparams)
+    aux_lms = create_aux_language_models(vocab_src, src_embedder if not hparams.independent_embeddings_side else torch.nn.Embedding(vocab_src.size(), hparams.emb_size, padding_idx=vocab_src[PAD_TOKEN], hparams)
     aux_tms = dict()
     translation_model=None
 
