@@ -351,12 +351,12 @@ def train(model,
                 # Run evaluation every evaluate_every steps if set (always after a bilingual batch)
                 if hparams.evaluate_every > 0 and step_counter.step('x') % hparams.evaluate_every == 0:
                     save_eval=True
-                    if model.lag_side is not None:
-                        bias=model.lag_side[1].bias.item()
-                        with torch.no_grad():
-                            u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
-                            if u > 0.5:
-                                save_eval=False
+                    #if model.lag_side is not None:
+                    #    bias=model.lag_side[1].bias.item()
+                    #    with torch.no_grad():
+                    #        u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
+                    #        if u > 0.5:
+                    #            save_eval=False
                     only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data, save_checkpoint=save_eval)
 
                 # Print training stats every now and again.
