@@ -23,7 +23,7 @@ def xavier_uniform_n_(w, gain=1., n=4):
         a = math.sqrt(3.0) * std
         nn.init.uniform_(w, -a, a)
 
-def initialize_model(model, pad_idx, cell_type, emb_init_scale, verbose=False):
+def initialize_model(model, pad_idx, cell_type, emb_init_scale, verbose=False,skip_embeddings=False):
     """
     Initializes the model parameters. Makes use of naming conventions for parameters
     that all models in aevnmt.models should follow.
@@ -41,12 +41,13 @@ def initialize_model(model, pad_idx, cell_type, emb_init_scale, verbose=False):
 
             # Initialize embeddings from a 0-mean Gaussian with scale emb_init_scale.
             elif "embedder" in name:
-                if verbose:
-                    print(f"Initializing {name} with N(0, {emb_init_scale})")
-                nn.init.normal_(param, mean=0., std=emb_init_scale)
+                if not skip_embeddings:
+                    if verbose:
+                        print(f"Initializing {name} with N(0, {emb_init_scale})")
+                    nn.init.normal_(param, mean=0., std=emb_init_scale)
 
-                # Set the padding embedding back to zeros.
-                param[pad_idx].zero_()
+                    # Set the padding embedding back to zeros.
+                    param[pad_idx].zero_()
 
             # Initialize biases to zeros.
             elif "bias" in name:
