@@ -203,7 +203,7 @@ def senvae_monolingual_step_x(
     tracker.update('SenVAE/ELBO', ELBO.sum().item())
     tracker.update('SenVAE/ll', ll.sum().item())
     tracker.update('SenVAE/sideELBO', sideELBO.sum().item())
-    tracker.update('SenVAE/sideLL', sideNLL.sum().item())
+    tracker.update('SenVAE/sideLL', sideNLL.sum().item() if not hparams.disable_side_losses else sideNLL)
     tracker.update('SenVAE/KL', mono_vae_terms['KL'].sum().item())
     tracker.update('SenVAE/sideELBOTokenNorm', sideELBOTokenNorm.sum().item())
     #tracker.update('SenVAE/sideLossTokenNorm', sideLossTokenNorm.sum().item())
@@ -351,12 +351,12 @@ def train(model,
                 # Run evaluation every evaluate_every steps if set (always after a bilingual batch)
                 if hparams.evaluate_every > 0 and step_counter.step('x') % hparams.evaluate_every == 0:
                     save_eval=True
-                    if model.lag_side is not None:
-                        bias=model.lag_side[1].bias.item()
-                        with torch.no_grad():
-                            u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
-                            if u > 0.5:
-                                save_eval=False
+                    #if model.lag_side is not None:
+                    #    bias=model.lag_side[1].bias.item()
+                    #    with torch.no_grad():
+                    #        u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
+                    #        if u > 0.5:
+                    #            save_eval=False
                     only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data, save_checkpoint=save_eval)
 
                 # Print training stats every now and again.
@@ -494,7 +494,9 @@ def main():
     #Custom initialization of lagrangian multiplier
     if hparams.init_lag_side_uniform:
         print("Initilazing Lagrange multiplier weight to 1 for side losses")
-        nn.init.constant_(model.lag_side.named_parameters['1.bias'],0.55)
+        for name,param in model.lag_side.named_parameters():
+            if name == '1.bias':        
+                nn.init.constant_(param,0.55)
 
     # Create the output directories.
     out_dir = Path(hparams.output_dir)

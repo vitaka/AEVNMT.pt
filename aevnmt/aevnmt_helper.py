@@ -256,7 +256,7 @@ def create_model(hparams, vocab_src, vocab_tgt):
     )
 
     # Auxiliary generative components
-    aux_lms = create_aux_language_models(vocab_src, src_embedder if not hparams.independent_embeddings_side else torch.nn.Embedding(vocab_src.size(), hparams.emb_size, padding_idx=vocab_src[PAD_TOKEN], hparams)
+    aux_lms = create_aux_language_models(vocab_src, src_embedder if not hparams.independent_embeddings_side else torch.nn.Embedding(vocab_src.size(), hparams.emb_size, padding_idx=vocab_src[PAD_TOKEN]), hparams)
     aux_tms = dict()
     translation_model=None
 
