@@ -214,6 +214,7 @@ options = {
     "disable_KL": (bool, False, False, "Disable KL", 6),
     "reset_main_decoder_after_warmup": (bool, False, False, "Reset main decoder after side losses warmup", 6),
     "reset_main_decoder_at_start": (bool, False, False, "Reset main decoder after loading an existing model", 6),
+    "reset_side_decoders_at_start": (bool, False, False, "Reset side decoders after loading an existing model", 6),
     "disconnect_inference_network_after_warmup": (bool, False, False, "Disconnect inference network after side losses warmup", 6),
     "disconnect_inference_network": (bool, False, False, "Disconnect inference network", 6),
     "disable_main_loss": (bool, False, False, "Train only side losses, always. Use me together with criterion 'side_likelihood' ", 6),

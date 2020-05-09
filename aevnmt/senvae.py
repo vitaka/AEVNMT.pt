@@ -485,6 +485,11 @@ def main():
             print(f"\nResetting main decoder...")
             initialize_model(model.language_model, vocab_src[PAD_TOKEN], hparams.cell_type,
                              hparams.emb_init_scale, verbose=True,skip_embeddings=not hparams.independent_embeddings_side)
+        if hparams.reset_side_decoders_at_start:
+            print(f"\nResetting side decoders...")
+            for m in model.aux_lms:
+                initialize_model(m, vocab_src[PAD_TOKEN], hparams.cell_type,
+                             hparams.emb_init_scale, verbose=True)
 
     #Custom initialization of lagrangian multiplier
     if hparams.init_lag_side_uniform:
