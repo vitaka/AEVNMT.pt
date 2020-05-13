@@ -364,6 +364,53 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         # [B, Tx] -> [B]
         return (likelihood.log_prob(x) * (x != self.pad_idx).float()).sum(-1)/(x != self.pad_idx).float().sum(-1)
 
+
+    def nucleus_sample(self,z,max_len=100,state=dict(),sampling_nucleus_p=1.0):
+        """
+        Sample from X|z where z [B, Dz]
+        """
+        batch_size = z.size(0)
+        hidden = self.init(z)
+        prev_y = torch.full(size=[batch_size], fill_value=self.sos_idx, dtype=torch.long,
+            device=self.embedder.weight.device)
+
+        # Decode step-by-step by picking the maximum probability word
+        # at each time step.
+        predictions = []
+        log_probs = []
+        is_complete = torch.zeros_like(prev_y).unsqueeze(-1).byte()
+        for t in range(max_len):
+            prev_y = self.embedder(prev_y)
+            hidden, pre_output = self.step(prev_y, hidden, z)
+            logits = self.generate(pre_output)
+            px_z = Categorical(logits=logits)
+            if greedy:
+                prediction = torch.argmax(logits, dim=-1)
+            else:
+                if sampling_nucleus_p < 1.0:
+                    #sort probs from high to low
+                    sortvals, sortidxs =py_x.probs.squeeze(dim=1).sort(descending=True)
+                    #Sum probs
+                    cumsums=sortvals.cumsum(dim=-1)
+                    #original probs will be multiplied by these factors
+                    probfactor=torch.where(cumsums >  sampling_nucleus_p, torch.zeros_like(cumsums), torch.ones_like(cumsums))
+                    probfactor[:,0]=1.0
+                    #But we need the factors in the original order, not in sorted probability order
+                    restored_probfactor = torch.empty_like(py_x.probs)
+                    #Probably there is a faster way of doing this..
+                    for i in range(py_x.probs.size(0)):
+                        restored_probfactor[i][0][ sortidxs[i] ]=probfactor[i]
+                    py_x=Categorical(probs=( py_x.probs * restored_probfactor ))
+                prediction = px_z.sample()
+            prev_y = prediction.view(batch_size)
+            log_prob_pred = px_z.log_prob(prediction)
+            log_probs.append(torch.where(is_complete, torch.zeros_like(log_prob_pred), log_prob_pred))
+            predictions.append(torch.where(is_complete, torch.full_like(prediction, self.embedder.padding_idx), prediction))
+            is_complete = is_complete | (prediction == self.eos_idx).byte()
+
+        state['log_prob'] = torch.cat(log_probs, dim=1)
+        return torch.cat(predictions, dim=1)
+
     def sample(self, z, max_len=100, greedy=False, state=dict()):
         """
         Sample from X|z where z [B, Dz]
