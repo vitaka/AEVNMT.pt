@@ -94,6 +94,7 @@ options = {
     "shuffle_lm":(bool, False, False, "z is also used to produce source sentences with a shuffled LM instead of a reverse LM", 1),
     "shuffle_lm_tl":(bool, False, False, "z is also used to produce target sentences with a shuffled LM instead of a reverse LM", 1),
     "shuffle_lm_keep_bpe":(bool, False, False, "Shuffle whole words instead of BPE fragments.", 1),
+    "shuffle_lm_skip_bigram":(bool, False, False, "Ensure pairs of of words in shuffled sentences follow original word order.", 1),
     "shuffle_lm_keep_epochs":(bool, False, False, "Ensure every sentence is always shuffled in the same way for every pass.", 1),
     "mixture_likelihood":(bool, False, False, "Use a mixture of likelihoods", 1),
     "mixture_likelihood_dir_prior":(float, 0., False, "Specify a symmetric Dirichlet prior over mixture weights (use 0 for uniform and deterministic weights).", 1),
@@ -127,6 +128,7 @@ options = {
     "length_penalty_factor": (float, 1.0, False, "Length penalty factor (alpha) for"
                                                  " beam search decoding.", 3),
     "sample_decoding": (bool, False, False, "When decgding, sample instead of searching for the translation with maximum probability.", 3),
+    "sample_decoding_nucleus_p": (float, 1.0, False, "Sampling from the top words that account for this probability mass.", 3),
     "re_generate_sl": (bool, False, False, "When decoding, use SL LM instead of translation model.", 3),
     "sample_prior_decoding": (int, 0, False, "When translating/generating SL with AEVNMT, sample this number of sentences from the prior and ignore the posterior.", 3),
 

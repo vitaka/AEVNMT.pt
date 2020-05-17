@@ -483,7 +483,10 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
         vocab= vocab_src
 
         if hparams.sample_decoding:
-            raw_hypothesis=language_model.sample(z)
+            if hparams.sample_decoding_nucleus_p < 1.0:
+                raw_hypothesis=language_model.nucleus_sample(z,sampling_nucleus_p=hparams.sample_decoding_nucleus_p)
+            else:
+                raw_hypothesis=language_model.sample(z)
         elif hparams.beam_width <= 1:
             raw_hypothesis=language_model.sample(z, greedy=True)
         else:
@@ -653,14 +656,14 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
             x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
                 sentences_x, vocab_src, device,
-                word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram)
 
 
             if vocab_tgt is not None:
                 y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
                 y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
                     sentences_y, vocab_tgt, device,
-                    word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                    word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram)
             else:
                 y_in=y_out=seq_mask_y=seq_len_y=None
                 y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
@@ -745,7 +748,7 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
             x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
                 sentences_x, vocab_src, device,
-                word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram)
 
             bsz=x_in.size(0)
 
@@ -753,7 +756,7 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
                 y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
                 y_shuf_in, y_shuf_out, seq_mask_y_shuf, seq_len_y_shuf, noisy_y_shuf_in=create_noisy_batch(
                     sentences_y, vocab_tgt, device,
-                    word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe)
+                    word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram)
             else:
                 y_in=y_out=seq_mask_y=seq_len_y=None
                 y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
