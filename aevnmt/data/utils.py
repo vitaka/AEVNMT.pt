@@ -6,7 +6,18 @@ import sys
 from .constants import UNK_TOKEN, PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
 
 
-def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=True, shuffle_toks=False,full_words_shuf=False,shuffle_dict=None):
+def skip_bigram_indexes(splits):
+    perm_indexes=np.random.permutation(len(splits))
+    #shuffle pairs to make sure first index is always lower than second index
+    for i in range(0,len(splits)-1,2):
+        if perm_indexes[i]> perm_indexes[i+1]:
+            #Shufle
+            tmp=perm_indexes[i]
+            perm_indexes[i]=perm_indexes[i+1]
+            perm_indexes[i+1]=tmp
+    return perm_indexes
+
+def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=True, shuffle_toks=False,full_words_shuf=False,skip_bigram_shuf=False,shuffle_dict=None):
     """
     Converts a list of sentences to a padded batch of word ids. Returns
     an input batch, an output batch shifted by one, a sequence mask over
@@ -34,6 +45,24 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
                 sentences=new_sentences
             else:
                 sentences=[ " ".join(np.random.permutation(s.replace("@@ ","@@").split(" "))).replace("@@","@@ ")  for s in sentences  ]
+        elif skip_bigram_shuf:
+            if shuffle_dict is not None:
+                new_sentences=[]
+                for s in sentences:
+                    splits=s.split(" ")
+                    if s in shuffle_dict:
+                        perm_indexes=shuffle_dict[s]
+                    else:
+                        perm_indexes=skip_bigram_indexes(splits)
+                    new_sentences.append( " ".join(np.array(splits)[ perm_indexes ])  )
+                sentences=new_sentences
+            else:
+                new_sentences=[]
+                for s in sentences:
+                    splits=s.split(" ")
+                    perm_indexes=skip_bigram_indexes(splits)
+                    new_sentences.append( " ".join(np.array(splits)[ perm_indexes ])  )
+                sentences=new_sentences
         else:
             if shuffle_dict is not None:
                 new_sentences=[]

@@ -94,6 +94,7 @@ options = {
     "shuffle_lm":(bool, False, False, "z is also used to produce source sentences with a shuffled LM instead of a reverse LM", 1),
     "shuffle_lm_tl":(bool, False, False, "z is also used to produce target sentences with a shuffled LM instead of a reverse LM", 1),
     "shuffle_lm_keep_bpe":(bool, False, False, "Shuffle whole words instead of BPE fragments.", 1),
+    "shuffle_lm_skip_bigram":(bool, False, False, "Ensure pairs of of words in shuffled sentences follow original word order.", 1),
     "shuffle_lm_keep_epochs":(bool, False, False, "Ensure every sentence is always shuffled in the same way for every pass.", 1),
     "mixture_likelihood":(bool, False, False, "Use a mixture of likelihoods", 1),
     "mixture_likelihood_dir_prior":(float, 0., False, "Specify a symmetric Dirichlet prior over mixture weights (use 0 for uniform and deterministic weights).", 1),
