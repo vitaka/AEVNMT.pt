@@ -23,7 +23,7 @@ class AEVNMT(nn.Module):
             feed_z=False,
             aux_lms: Dict[str, GenerativeLM]=dict(), aux_tms: Dict[str, GenerativeTM]=dict(),
             mixture_likelihood=False, mixture_likelihood_dir_prior=0.0,
-            mdr=False, lag_side=None, lag_side_normtok=False, lag_side_elbo=False):
+            mdr=False, lag_side=None, lag_side_normtok=False, lag_side_elbo=False, lag_divergence=None):
         super().__init__()
         self.src_embedder = src_embedder
         self.tgt_embedder = tgt_embedder
@@ -59,6 +59,17 @@ class AEVNMT(nn.Module):
             self.lag_side_target=None
         self.lag_side_normtok=lag_side_normtok
         self.lag_side_elbo=lag_side_elbo
+
+        if lag_divergence is not None:
+            self.lag_divergence= torch.nn.Sequential(
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(1, 1),
+                torch.nn.Softplus()
+            )
+            self.lag_divergence_target=lag_divergence
+        else:
+            self.lag_divergence=None
+            self.lag_divergence_target=None
 
         # This is done because the location and scale of the prior distribution are not considered
         # parameters, but are rather constant. Registering them as buffers still makes sure that
@@ -129,6 +140,18 @@ class AEVNMT(nn.Module):
         else:
             return self.lag_side.parameters()
 
+    def lagrangian_multiplier_divergence(self, device):
+        if self.lag_divergence is None:
+            raise ValueError("You are not using Lagrangian divergence target, thus there's no Lagrangian multiplier")
+        else:
+            return self.lag_divergence(torch.zeros(1, device=device))
+
+    def lag_divergence_parameters(self):
+        if self.lag_divergence is None:
+            return []
+        else:
+            return self.lag_divergence.parameters()
+
 
     def inference_parameters(self):
         return self.inference_model.parameters()
@@ -179,7 +202,7 @@ class AEVNMT(nn.Module):
         y_embed = self.dropout_layer(y_embed)
         return y_embed
 
-    def forward(self, x, seq_mask_x, seq_len_x, y, x_shuf,seq_mask_x_shuf,seq_len_x_shuf,y_shuf,seq_mask_y_shuf,seq_len_y_shuf, z):
+    def forward(self, x, seq_mask_x, seq_len_x, y, x_shuf,seq_mask_x_shuf,seq_len_x_shuf,y_shuf,seq_mask_y_shuf,seq_len_y_shuf, z, disable_aux=False):
         """
         Run all components of the model and return parameterised distributions.
 
@@ -199,17 +222,18 @@ class AEVNMT(nn.Module):
 
         # Obtain auxiliary X_i|z, x_{<i}
         aux_lm_likelihoods = dict()
-        for aux_name, aux_decoder in self.aux_lms.items():
-            if aux_name == "shuffled":
-                if x_shuf is not None:
-                    aux_lm_likelihoods[aux_name] = aux_decoder(x_shuf, z)
-            else:
-                aux_lm_likelihoods[aux_name] = aux_decoder(x, z)
+        if not disable_aux:
+            for aux_name, aux_decoder in self.aux_lms.items():
+                if aux_name == "shuffled":
+                    if x_shuf is not None:
+                        aux_lm_likelihoods[aux_name] = aux_decoder(x_shuf, z)
+                else:
+                    aux_lm_likelihoods[aux_name] = aux_decoder(x, z)
 
 
         # Obtain auxiliary Y_j|z, x, y_{<j}
         aux_tm_likelihoods = dict()
-        if y is not None:
+        if y is not None and not disable_aux:
             for aux_name, aux_decoder in self.aux_tms.items():
                 if aux_name == "shuffled":
                     #Xs are ignored
@@ -230,7 +254,7 @@ class AEVNMT(nn.Module):
             return self.aux_lms[comp_name].log_prob(likelihood, x)
 
     def loss(self, tm_likelihood: Categorical, lm_likelihood: Categorical, targets_y, targets_x, targets_y_shuf, targets_x_shuf, qz: Distribution,
-            free_nats=0., KL_weight=1., reduction="mean", aux_lm_likelihoods=dict(), aux_tm_likelihoods=dict(),disable_main_loss=False, disable_side_losses=False):
+            free_nats=0., KL_weight=1., reduction="mean", aux_lm_likelihoods=dict(), aux_tm_likelihoods=dict(),disable_main_loss=False, disable_side_losses=False,tm_likelihood_prior=None,lm_likelihood_prior=None):
         """
         Computes an estimate of the negative evidence lower bound for the single sample of the latent
         variable that was used to compute the categorical parameters, and the distributions qz
@@ -280,6 +304,30 @@ class AEVNMT(nn.Module):
                 mdr_term = u.detach() * (free_nats - rate)
                 mdr_loss = - u * (free_nats - rate.detach())
                 out_dict['mdr_loss'] = mdr_loss
+
+        #Divergence loss
+        #KL at the moment, to test that everything works
+        if lm_likelihood_prior is not None:
+            #JS divergence
+            M=torch.distributions.categorical.Categorical(probs=(lm_likelihood.probs+lm_likelihood_prior.probs)/2)
+            KLd=torch.distributions.kl.kl_divergence(lm_likelihood,M)
+            KLi=torch.distributions.kl.kl_divergence(lm_likelihood_prior,M)
+            JS=0.5*KLd+0.5*KLi
+            JS=JS*(targets_x != (self.language_model.pad_idx)).float()
+            #KLpriordec=torch.distributions.kl.kl_divergence(lm_likelihood, lm_likelihood_prior) * (targets_x != (self.language_model.pad_idx)).float()
+            out_dict['JSpriordec'] = JS
+
+            if self.lag_divergence is not None:
+                assert tm_likelihood is None
+                u=self.lagrangian_multiplier_divergence(JS.device)
+                rate=JS.sum()/(targets_x != (self.language_model.pad_idx)).sum().float()
+                lag_divergence_term=u.detach() * ( self.lag_divergence_target - rate)
+                lag_divergence_loss= -u *( self.lag_divergence_target - rate.detach() )
+                out_dict['lag_divergence_loss']=lag_divergence_loss
+                out_dict['lag_divergence_difference']=rate.detach() - self.lag_divergence_target
+                out_dict['lag_divergence_u']=u.detach()
+                mdr_term += lag_divergence_term
+
         # annealing
         KL *= KL_weight
 

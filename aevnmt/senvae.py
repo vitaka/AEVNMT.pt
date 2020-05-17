@@ -95,12 +95,23 @@ def mono_vae_loss(
         model, hparams, inputs, noisy_inputs, targets, seq_len,seq_mask,
         inputs_shuf, noisy_inputs_shuf, targets_shuf, seq_len_shuf,seq_mask_shuf,
         qz, z, KL_weight, step,
-        state=dict(), writer=None, title="SenVAE", disable_main_loss=False,disable_side_losses=False, disable_kl=False):
+        state=dict(), writer=None, title="SenVAE", disable_main_loss=False,disable_side_losses=False, disable_kl=False,
+        compute_divergence_loss_from=None):
 
     tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(noisy_inputs, seq_mask, seq_len, None,
     noisy_inputs_shuf,seq_mask_shuf,seq_len_shuf,
     None,None,None,
     z)
+
+    tm_likelihood_prior=None
+    lm_likelihood_prior=None
+    if compute_divergence_loss_from is not None:
+        #Another forward pass of the main decoder
+        #TODO: do not compute side losses in this forward pass
+        tm_likelihood_prior, lm_likelihood_prior, _, _, _ = model(noisy_inputs, seq_mask, seq_len, None,
+        None,None,None,
+        None,None,None,
+        compute_divergence_loss_from, disable_aux=True)
 
     y_out=None
     y_shuf_out=None
@@ -109,7 +120,7 @@ def mono_vae_loss(
                       KL_weight=KL_weight * ( 0 if disable_kl else 1 ),
                       reduction="mean",
                       aux_lm_likelihoods=aux_lm_likelihoods,
-                      aux_tm_likelihoods=aux_tm_likelihoods, disable_main_loss=disable_main_loss,disable_side_losses=disable_side_losses)
+                      aux_tm_likelihoods=aux_tm_likelihoods, disable_main_loss=disable_main_loss,disable_side_losses=disable_side_losses,tm_likelihood_prior=tm_likelihood_prior,lm_likelihood_prior=lm_likelihood_prior)
 
 
     if writer:
@@ -123,6 +134,8 @@ def mono_vae_loss(
             writer.add_scalar('%s/lag_side_loss' % title, loss['lag_side_loss'].mean(), step)
         if 'lag_u' in loss:
             writer.add_scalar('%s/lag_u' % title, loss['lag_u'], step)
+        if 'lag_divergence_u' in loss:
+            writer.add_scalar('%s/lag_divergence_u' % title, loss['lag_divergence_u'], step)
 
     return loss
 
@@ -145,6 +158,11 @@ def senvae_monolingual_step_x(
     else:
         z_in=z
 
+    zprior=None
+    if hparams.lag_divergence or hparams.print_lag_divergence:
+        pz = model.prior()
+        zprior=torch.stack([pz.sample() for i in range(inputs.size(0))])
+
     if writer:
         writer.add_histogram("posterior-x/z", z_in, step)
         for param_name, param_value in get_named_params(qz):
@@ -156,7 +174,8 @@ def senvae_monolingual_step_x(
         inputs_shuf=inputs_shuf, noisy_inputs_shuf=noisy_inputs_shuf, targets_shuf=targets_shuf, seq_mask_shuf=seq_mask_shuf, seq_len_shuf=seq_len_shuf,
         qz=qz, z=z_in,
         KL_weight=KL_weight, step=step,
-        writer=writer, title=title, disable_main_loss=disable_main_loss, disable_side_losses=disable_side_losses,disable_kl=disable_kl
+        writer=writer, title=title, disable_main_loss=disable_main_loss, disable_side_losses=disable_side_losses,disable_kl=disable_kl,
+        compute_divergence_loss_from=zprior
     )
     negative_elbo = mono_vae_terms['loss']
     negative_elbo.backward()
@@ -189,6 +208,15 @@ def senvae_monolingual_step_x(
         tracker.update('LagSide/loss', mono_vae_terms['lag_side_loss'].sum().item())
         tracker.update('LagSide/difference', mono_vae_terms['lag_difference'].sum().item())
         tracker.update('LagSide/u', mono_vae_terms['lag_u'].item())
+
+    tracker.update('SenVAE/JSpriordec', mono_vae_terms['JSpriordec'].sum().item())
+    if hparams.lag_divergence is not None:
+        optimizers['lag_divergence'].zero_grad()
+        mono_vae_terms['lag_divergence_loss'].backward()
+        optimizers['lag_divergence'].step()
+        tracker.update('LagDivergence/difference', mono_vae_terms['lag_divergence_difference'].sum().item())
+        tracker.update('LagDivergence/u', mono_vae_terms['lag_divergence_u'].item())
+        tracker.update('LagDivergence/loss', mono_vae_terms['lag_divergence_loss'].sum().item())
 
     # Update statistics.
     ELBO = mono_vae_terms['ELBO']
@@ -383,7 +411,10 @@ def train(model,
                           #f"tokennorm_side_loss(x) = {tracker_x.avg('SenVAE/sideLossTokenNorm','num_sentences'):,.2f} -- "
                           f"tokennorm_side_ELBO(x) = {tracker_x.avg('SenVAE/sideELBOTokenNorm','num_sentences'):,.2f} -- "
                           f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
+                          f"lag_divergence_u = {tracker_x.mean('LagDivergence/u'):,.2f}-- "
                           f"lag_diff(x) = {tracker_x.mean('LagSide/difference'):,.2f} -- "
+                          f"JSpriordec(x) = {tracker_x.avg('SenVAE/JSpriordec','num_tokens'):,.2f} -- "
+                          #f"JSpriordec(x) = {tracker_x.mean('SenVAE/JSpriordec'):,.2f} -- "
                           f"{tokens_per_sec:,.0f} tokens/s -- "
                           f"{elapsed:,.0f} s -- ")
 
@@ -457,7 +488,8 @@ def main():
         gen_parameters=model.generative_parameters(),
         inf_z_parameters=model.inference_parameters(),
         mdr_parameters=model.mdr_parameters(),
-        lag_side_parameters=model.lag_side_parameters())
+        lag_side_parameters=model.lag_side_parameters(),
+        lag_divergence_parameters=model.lag_divergence_parameters())
     device = torch.device("cuda:0") if hparams.use_gpu else torch.device("cpu")
     model = model.to(device)
 

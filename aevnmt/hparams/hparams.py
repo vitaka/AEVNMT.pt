@@ -170,6 +170,8 @@ options = {
     "word_dropout": (float, 0., False, "Fraction of input words to drop.", 4),
     "KL_free_nats": (float, 0., False, "KL = min(KL_free_nats, KL)", 4),
     "mdr": (bool, False, False, "Use MDR for free nats", 4),
+    "lag_divergence": (float, None, False, "Use posterior/prior divergence constraint", 4),
+    "print_lag_divergence": (bool, False, False, "Print posterior/prior divergence constraint (but do not optimize for it)", 4),
     "KL_annealing_steps": (int, 0, False, "Amount of KL annealing steps (0...1)", 4),
     "evaluate_every": (int, -1, False, "The number of batches after which to run"
                                        " evaluation. If <= 0, evaluation will happen"
