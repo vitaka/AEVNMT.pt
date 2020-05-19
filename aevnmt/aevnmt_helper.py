@@ -651,6 +651,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num
         log_marginal = defaultdict(float)
         total_KL = 0.
         n_samples = num_importance_samples
+        if hparams.autoencoder:
+            n_samples=1
         for sentences_tuple in val_dl:
             if vocab_tgt is not None:
                 sentences_x, sentences_y = sentences_tuple
@@ -687,7 +689,11 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num
             for s in range(n_samples):
 
                 # z ~ q(z|x)
-                z = qz.sample()
+                if hparams.autoencoder:
+                    z=qz.mean
+                else:
+                    z = qz.sample()
+
 
                 # Compute the logits according to this sample of z.
                 tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(x_in, seq_mask_x, seq_len_x, y_in,
