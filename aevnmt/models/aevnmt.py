@@ -305,6 +305,7 @@ class AEVNMT(nn.Module):
                 mdr_loss = - u * (free_nats - rate.detach())
                 out_dict['mdr_loss'] = mdr_loss
 
+        out_dict['JSpriordec'] = torch.tensor([0.0,0.0])
         #Divergence loss
         #KL at the moment, to test that everything works
         if lm_likelihood_prior is not None:

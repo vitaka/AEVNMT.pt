@@ -426,12 +426,14 @@ def train(model,
 
         # If evaluate_every is not set, we evaluate after every epoch.
         if hparams.evaluate_every <= 0:
+            save_eval=True
             if model.lag_side is not None:
                 bias=model.lag_side[1].bias.item()
                 with torch.no_grad():
                     u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
                     if u > 5:
                         save_eval=False
+            print("Evaluating with save_eval={} and u={}".format(save_eval,u))
             only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data,save_checkpoint=save_eval)
 
         epoch_num += 1
@@ -452,7 +454,6 @@ def train(model,
 
 
 def main():
-
     # Load and print hyperparameters.
     hparams = Hyperparameters()
     print("\n==== Hyperparameters")
