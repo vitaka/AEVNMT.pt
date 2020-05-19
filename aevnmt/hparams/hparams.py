@@ -216,6 +216,7 @@ options = {
     "keep_main_loss_during_warmup": (bool, False, False, "Train also main objective during warm-up", 6),
     "disable_KL_after_warmup": (bool, False, False, "Disable KL after side losses warmup", 6),
     "disable_KL": (bool, False, False, "Disable KL", 6),
+    "autoencoder": (bool, False, False, "Use mean and disable sampling from posterior", 6),
     "reset_main_decoder_after_warmup": (bool, False, False, "Reset main decoder after side losses warmup", 6),
     "reset_main_decoder_at_start": (bool, False, False, "Reset main decoder after loading an existing model", 6),
     "reset_side_decoders_at_start": (bool, False, False, "Reset side decoders after loading an existing model", 6),

@@ -150,7 +150,11 @@ def senvae_monolingual_step_x(
     # Infer q(z|x)
     qz = model.approximate_posterior(inputs, seq_mask, seq_len,None,None,None)
     # [B, dz]
-    z = qz.rsample()
+
+    if hparams.autoencoder:
+        z=qz.mean
+    else:
+        z = qz.rsample()
     # [B]
 
     if disconnect_inference_network:
