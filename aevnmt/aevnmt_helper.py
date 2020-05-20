@@ -375,7 +375,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
 
     JSpostprior=-1
     if hparams.log_JS_post_prior:
-        JSpostprior=_compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt,hparams,step, summary_writer, device,target_len=hparams.log_KL_x_post_prior_length)
+        JSpostprior=_compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt,hparams,step, summary_writer, device)
     val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt,hparams, device,num_importance_samples)
     val_NLL = val_NLLs['joint/main']
     if vocab_tgt is not None:
@@ -814,7 +814,7 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
 
             JSpriorpost=JS(lm_likelihood_prior,lm_likelihood)
             JSpostpost=JS(lm_likelihood,lm_likelihood2)
-            JSFinal=((JSpriorpost-JSpostpost)*(x_out != (model.language_model.pad_idx))).sum().float()
+            JSFinal=((JSpriorpost-JSpostpost)*(x_out != (model.language_model.pad_idx)).float() ).sum().item()
 
             JStotal+=JSFinal
             num_tokens+=seq_len_x.sum().item()
