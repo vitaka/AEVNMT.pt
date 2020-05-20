@@ -374,8 +374,9 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
         val_dl = BucketingTextDataLoader(val_dl)
 
     JSpostprior=-1
+    JSpostpriorPerPosition=None
     if hparams.log_JS_post_prior:
-        JSpostprior=_compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt,hparams,step, summary_writer, device)
+        JSpostprior,JSpostpriorPerPosition=_compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt,hparams,step, summary_writer, device)
     val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt,hparams, device,num_importance_samples)
     val_NLL = val_NLLs['joint/main']
     if vocab_tgt is not None:
@@ -411,7 +412,9 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
           f"- Source: {random_source}\n"
           f"- Target: {random_target}\n"
           f"- Prediction: {random_prediction}")
-
+    if JSpostpriorPerPosition is not None:
+        for i in sorted(JSpostpriorPerPosition.keys()):
+            print(" {}: {}".format(i,JSpostpriorPerPosition[i]))
     if hparams.draw_translations > 0:
         random_idx = np.random.choice(len(inputs))
         dl = DataLoader([val_data[random_idx] for _ in range(hparams.draw_translations)], batch_size=hparams.batch_size, shuffle=False, num_workers=4)
@@ -759,6 +762,8 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
         n_samples = 10
         num_tokens=0
         JStotal=0.0
+        per_position_totals=defaultdict(float)
+        per_position_num_tokens=defaultdict(float)
         for sentences_tuple in val_dl:
 
             if vocab_tgt is not None:
@@ -783,53 +788,61 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
                 y_in=y_out=seq_mask_y=seq_len_y=None
                 y_shuf_in=y_shuf_out=seq_mask_y_shuf=seq_len_y_shuf=noisy_y_shuf_in=None
 
+            for s in range(n_samples):
+                # Infer q(z|x) for this batch.
+                qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
+                pz = model.prior()
 
-            # Infer q(z|x) for this batch.
-            qz = model.approximate_posterior(x_in, seq_mask_x, seq_len_x, y_in, seq_mask_y, seq_len_y)
-            pz = model.prior()
+                # We are not doing importance sampling at the moment
 
-            # We are not doing importance sampling at the moment
+                zposterior=qz.sample()
+                zposterior2=qz.sample()
+                zprior=torch.stack([pz.sample() for i in range(x_in.size(0))])
 
-            zposterior=qz.sample()
-            zposterior2=qz.sample()
-            zprior=torch.stack([pz.sample() for i in range(x_in.size(0))])
+                # Compute the logits according to the posterior sample of z.
+                tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(x_in, seq_mask_x, seq_len_x, y_in,
+                noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
+                noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
+                zposterior)
 
-            # Compute the logits according to the posterior sample of z.
-            tm_likelihood, lm_likelihood, _, aux_lm_likelihoods, aux_tm_likelihoods = model(x_in, seq_mask_x, seq_len_x, y_in,
-            noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
-            noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
-            zposterior)
+                # Compute the logits according to another posterior sample of z.
+                tm_likelihood2, lm_likelihood2, _, aux_lm_likelihoods, aux_tm_likelihoods = model(x_in, seq_mask_x, seq_len_x, y_in,
+                noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
+                noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
+                zposterior2)
 
-            # Compute the logits according to another posterior sample of z.
-            tm_likelihood2, lm_likelihood2, _, aux_lm_likelihoods, aux_tm_likelihoods = model(x_in, seq_mask_x, seq_len_x, y_in,
-            noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
-            noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
-            zposterior2)
+                # Compute the logits according to the prior sample of z.
+                tm_likelihood_prior, lm_likelihood_prior, _, aux_lm_likelihoods_prior, aux_tm_likelihoods_prior = model(x_in, seq_mask_x, seq_len_x, y_in,
+                noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
+                noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
+                zprior)
 
-            # Compute the logits according to the prior sample of z.
-            tm_likelihood_prior, lm_likelihood_prior, _, aux_lm_likelihoods_prior, aux_tm_likelihoods_prior = model(x_in, seq_mask_x, seq_len_x, y_in,
-            noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
-            noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
-            zprior)
+                JSpriorpost=JS(lm_likelihood_prior,lm_likelihood)
+                JSpostpost=JS(lm_likelihood,lm_likelihood2)
+                JSFinalnosum=((JSpriorpost-JSpostpost)*(x_out != (model.language_model.pad_idx)).float() )
+                JSFinal=JSFinalnosum.sum().item()
 
-            JSpriorpost=JS(lm_likelihood_prior,lm_likelihood)
-            JSpostpost=JS(lm_likelihood,lm_likelihood2)
-            JSFinal=((JSpriorpost-JSpostpost)*(x_out != (model.language_model.pad_idx)).float() ).sum().item()
+                JStotal+=JSFinal
+                num_tokens+=seq_len_x.sum().item()
+                #JSAvg=JSFinal.sum()/(x_out != (model.language_model.pad_idx)).sum().float()
 
-            JStotal+=JSFinal
-            num_tokens+=seq_len_x.sum().item()
-            #JSAvg=JSFinal.sum()/(x_out != (model.language_model.pad_idx)).sum().float()
+                for i in range(len(x_in.size(1))):
+                    per_position_totals[i]+=JSFinalnosum[:,i].sum().item()
+                    per_position_num_tokens[i]+= (i < seq_len_x).float().sum().item()
 
 
-            #if x_in.size(1) == target_len:
-            #    for i in range(bsz):
-            #        #Discard sentences with padding
-            #        if torch.sum( y_out[i] == model.tgt_embedder.padding_idx ) == 0:
-            #            KLpostprior=torch.distributions.kl.kl_divergence(torch.distributions.Categorical(tm_likelihood.logits[i]),  torch.distributions.Categorical(tm_likelihood_prior.logits[i]))
-            #            KLpriorpost=torch.distributions.kl.kl_divergence( torch.distributions.Categorical(tm_likelihood_prior.logits[i]), torch.distributions.Categorical(tm_likelihood.logits[i]))
-            #            summary_writer.add_histogram('val-y/KLpriorpost',KLpriorpost,step)
-            #            summary_writer.add_histogram('val-y/KLpostprior',KLpostprior,step)
-        return JStotal/num_tokens
+                #if x_in.size(1) == target_len:
+                #    for i in range(bsz):
+                #        #Discard sentences with padding
+                #        if torch.sum( y_out[i] == model.tgt_embedder.padding_idx ) == 0:
+                #            KLpostprior=torch.distributions.kl.kl_divergence(torch.distributions.Categorical(tm_likelihood.logits[i]),  torch.distributions.Categorical(tm_likelihood_prior.logits[i]))
+                #            KLpriorpost=torch.distributions.kl.kl_divergence( torch.distributions.Categorical(tm_likelihood_prior.logits[i]), torch.distributions.Categorical(tm_likelihood.logits[i]))
+                #            summary_writer.add_histogram('val-y/KLpriorpost',KLpriorpost,step)
+                #            summary_writer.add_histogram('val-y/KLpostprior',KLpostprior,step)
+        per_position_results={}
+        for i in per_position_totals:
+            per_position_results=per_position_totals[i]/per_position_num_tokens[i]
+        return JStotal/num_tokens,per_position_results
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
     u1, s1, var1 = fwd_base.mean, fwd_base.stddev, fwd_base.variance
