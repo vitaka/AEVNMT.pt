@@ -142,6 +142,7 @@ options = {
     "inf_z_l2_weight": (float, 0., False, "Strength of L2 regulariser for inference parameters wrt z", 4),
 
     "num_epochs": (int, 1, False, "The number of epochs to train the model for.", 4),
+    "skip_training": (bool, False, False, "Do not train, only validate an existing model", 4),
     "batch_size": (int, 64, False, "The batch size.", 4),
     "print_every": (int, 100, False, "Print training statistics every x steps.", 4),
     "max_gradient_norm": (float, 5.0, False, "The maximum gradient norm to clip the"
@@ -229,6 +230,7 @@ options = {
     "init_lag_side_uniform": (bool, False, False,"Initialize Lagrange multiplier weight to 1", 6),
     "disable_tensorboard": (bool, False, False, "Disables logging data for TensorBoard. Saves disk space.", 6),
     "log_KL_x_post_prior_length": (int, 0, False, "Log KL between p(x|x<i,z) when z has been sampled from the posterior or sampled from the prior for sentences with this length. 0 disables logging.", 6),
+    "log_JS_post_prior": (bool, False, False, "Compute JS post prior when validating.", 6),
     "disable_bucketing": (bool, False, False, "Disables bucketing in data loading.", 6),
     "independent_embeddings_side": (bool, False, False, "Side losses have independent embeddings.", 6),
 }

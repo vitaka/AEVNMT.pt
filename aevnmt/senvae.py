@@ -340,7 +340,7 @@ def train(model,
     shuffle_dict_sl=dict()
     # Start the training loop.
     KL_weight = 1.
-    while (epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience and ckpt.cooldowns < hparams.cooldown_patience ):
+    while  not hparams.skip_training and ((epoch_num <= hparams.num_epochs) or (ckpt.no_improvement(hparams.criterion) < hparams.patience and ckpt.cooldowns < hparams.cooldown_patience )):
         waiting = nb_bilingual_batches
         while waiting:
             batch_type = 'x'

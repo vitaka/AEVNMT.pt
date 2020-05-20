@@ -373,8 +373,9 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     else:
         val_dl = BucketingTextDataLoader(val_dl)
 
-    if hparams.log_KL_x_post_prior_length > 0:
-        _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt,hparams,step, summary_writer, device,target_len=hparams.log_KL_x_post_prior_length)
+    JSpostprior=-1
+    if hparams.log_JS_post_prior:
+        JSpostprior=_compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt,hparams,step, summary_writer, device,target_len=hparams.log_KL_x_post_prior_length)
     val_ppl, val_KL, val_NLLs = _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt,hparams, device,num_importance_samples)
     val_NLL = val_NLLs['joint/main']
     if vocab_tgt is not None:
@@ -406,6 +407,7 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
           f" -- BLEU = {val_bleu:.2f}"
           f" -- KL = {val_KL:.2f}"
           f" {nll_str}\n"
+          f" JS(post,prior) - JS(post,post) ={JSpostprior}"
           f"- Source: {random_source}\n"
           f"- Target: {random_target}\n"
           f"- Prediction: {random_prediction}")
@@ -740,7 +742,14 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num
     return val_perplexity, total_KL/num_sentences, NLLs
 
 
-def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, step, summary_writer,device,target_len):
+def JS(l_a,l_b):
+    M=torch.distributions.categorical.Categorical(probs=(l_a.probs+l_b.probs)/2)
+    KLd=torch.distributions.kl.kl_divergence(l_a,M)
+    KLi=torch.distributions.kl.kl_divergence(l_b,M)
+    JS=0.5*KLd+0.5*KLi
+    return JS
+
+def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, step, summary_writer,device):
     model.eval()
     with torch.no_grad():
         num_predictions = 0
@@ -748,6 +757,8 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
         log_marginal = defaultdict(float)
         total_KL = 0.
         n_samples = 10
+        num_tokens=0
+        JStotal=0.0
         for sentences_tuple in val_dl:
 
             if vocab_tgt is not None:
@@ -780,6 +791,7 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
             # We are not doing importance sampling at the moment
 
             zposterior=qz.sample()
+            zposterior2=qz.sample()
             zprior=torch.stack([pz.sample() for i in range(x_in.size(0))])
 
             # Compute the logits according to the posterior sample of z.
@@ -788,22 +800,36 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
             noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
             zposterior)
 
+            # Compute the logits according to another posterior sample of z.
+            tm_likelihood2, lm_likelihood2, _, aux_lm_likelihoods, aux_tm_likelihoods = model(x_in, seq_mask_x, seq_len_x, y_in,
+            noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
+            noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
+            zposterior2)
+
             # Compute the logits according to the prior sample of z.
             tm_likelihood_prior, lm_likelihood_prior, _, aux_lm_likelihoods_prior, aux_tm_likelihoods_prior = model(x_in, seq_mask_x, seq_len_x, y_in,
             noisy_x_shuf_in,seq_mask_x_shuf,seq_len_x_shuf,
             noisy_y_shuf_in,seq_mask_y_shuf,seq_len_y_shuf,
             zprior)
 
+            JSpriorpost=JS(lm_likelihood_prior,lm_likelihood)
+            JSpostpost=JS(lm_likelihood,lm_likelihood2)
+            JSFinal=((JSpriorpost-JSpostpost)*(x_out != (model.language_model.pad_idx))).sum().float()
 
-            if x_in.size(1) == target_len:
-                for i in range(bsz):
-                    #Discard sentences with padding
-                    if torch.sum( y_out[i] == model.tgt_embedder.padding_idx ) == 0:
-                        KLpostprior=torch.distributions.kl.kl_divergence(torch.distributions.Categorical(tm_likelihood.logits[i]),  torch.distributions.Categorical(tm_likelihood_prior.logits[i]))
-                        KLpriorpost=torch.distributions.kl.kl_divergence( torch.distributions.Categorical(tm_likelihood_prior.logits[i]), torch.distributions.Categorical(tm_likelihood.logits[i]))
-                        summary_writer.add_histogram('val-y/KLpriorpost',KLpriorpost,step)
-                        summary_writer.add_histogram('val-y/KLpostprior',KLpostprior,step)
+            JStotal+=JSFinal
+            num_tokens+=seq_len_x.sum().item()
+            #JSAvg=JSFinal.sum()/(x_out != (model.language_model.pad_idx)).sum().float()
 
+
+            #if x_in.size(1) == target_len:
+            #    for i in range(bsz):
+            #        #Discard sentences with padding
+            #        if torch.sum( y_out[i] == model.tgt_embedder.padding_idx ) == 0:
+            #            KLpostprior=torch.distributions.kl.kl_divergence(torch.distributions.Categorical(tm_likelihood.logits[i]),  torch.distributions.Categorical(tm_likelihood_prior.logits[i]))
+            #            KLpriorpost=torch.distributions.kl.kl_divergence( torch.distributions.Categorical(tm_likelihood_prior.logits[i]), torch.distributions.Categorical(tm_likelihood.logits[i]))
+            #            summary_writer.add_histogram('val-y/KLpriorpost',KLpriorpost,step)
+            #            summary_writer.add_histogram('val-y/KLpostprior',KLpostprior,step)
+        return JStotal/num_tokens
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
     u1, s1, var1 = fwd_base.mean, fwd_base.stddev, fwd_base.variance
