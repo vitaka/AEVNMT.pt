@@ -41,6 +41,7 @@ options = {
     "training_prefix": (str, None, True, "The prefix to bilingual training data.", 0),
     "validation_prefix": (str, None, True, "The validation file prefix.", 0),
     "test_prefix": (str, None, False, "The test file prefix.", 0),
+    "test_importance_samples": (int, 1000, False, "Importance samples for evaluating test ppl.", 0),
     "mono_src": (str, None, False, "The source monolingual training data.", 0),
     "mono_tgt": (str, None, False, "The target monolingual training data.", 0),
     "vocab_prefix": (str, None, False, "The vocabulary prefix, if share_vocab is True"

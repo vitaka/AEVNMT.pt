@@ -454,7 +454,7 @@ def train(model,
 
     if test_data is not None:
         print(f"Test set evaluation.")
-        run_evaluation(step_counter.step(),only_side_losses_phase, test_data,writer=None,num_importance_samples=1000)
+        run_evaluation(step_counter.step(),only_side_losses_phase, test_data,writer=None,num_importance_samples=hparams.test_importance_samples)
 
 
 def main():
