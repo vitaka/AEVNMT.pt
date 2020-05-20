@@ -826,7 +826,7 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
                 num_tokens+=seq_len_x.sum().item()
                 #JSAvg=JSFinal.sum()/(x_out != (model.language_model.pad_idx)).sum().float()
 
-                for i in range(len(x_in.size(1))):
+                for i in range(x_in.size(1)):
                     per_position_totals[i]+=JSFinalnosum[:,i].sum().item()
                     per_position_num_tokens[i]+= (i < seq_len_x).float().sum().item()
 
@@ -841,7 +841,7 @@ def _compare_KL_posterior_prior(model, val_dl, vocab_src, vocab_tgt, hparams, st
                 #            summary_writer.add_histogram('val-y/KLpostprior',KLpostprior,step)
         per_position_results={}
         for i in per_position_totals:
-            per_position_results=per_position_totals[i]/per_position_num_tokens[i]
+            per_position_results[i]=per_position_totals[i]/per_position_num_tokens[i]
         return JStotal/num_tokens,per_position_results
 
 def product_of_gaussians(fwd_base: Normal, bwd_base: Normal) -> Normal:
