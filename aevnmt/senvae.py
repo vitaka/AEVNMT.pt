@@ -466,7 +466,8 @@ def main():
     # Create the output directory and save hparams
     out_dir = Path(hparams.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    hparams.save(out_dir / "hparams")
+    if not hparams.skip_training:
+        hparams.save(out_dir / "hparams")
     print("\n==== Output")
     print(f"Created output directory at {hparams.output_dir}")
 
