@@ -698,6 +698,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num
                     z=qz.mean
                 else:
                     z = qz.sample()
+                    if hparams.z_zero:
+                        z*=0
 
 
                 # Compute the logits according to this sample of z.

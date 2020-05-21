@@ -224,6 +224,7 @@ options = {
     "reset_side_decoders_at_start": (bool, False, False, "Reset side decoders after loading an existing model", 6),
     "disconnect_inference_network_after_warmup": (bool, False, False, "Disconnect inference network after side losses warmup", 6),
     "disconnect_inference_network": (bool, False, False, "Disconnect inference network", 6),
+    "z_zero": (bool, False, False, "z is always zero (RNNLM)", 6),
     "disable_main_loss": (bool, False, False, "Train only side losses, always. Use me together with criterion 'side_likelihood' ", 6),
     "lag_side": (float,None,False,"Use lagrange multiplier to obtimize main ELBO subject to negative side NLL is lower than this amount", 6),
     "lag_side_normtok": (bool, False, False,"Lagrange multiplier operates on side losses normalized per sentence, to avoid oscillations", 6),

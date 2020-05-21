@@ -155,6 +155,8 @@ def senvae_monolingual_step_x(
         z=qz.mean
     else:
         z = qz.rsample()
+        if hparams.z_zero:
+            z*=0
     # [B]
 
     if disconnect_inference_network:
