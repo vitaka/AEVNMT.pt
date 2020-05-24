@@ -411,7 +411,7 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         state['log_prob'] = torch.cat(log_probs, dim=1)
         return torch.cat(predictions, dim=1)
 
-    def sample(self, z, max_len=100, greedy=False, state=dict()):
+    def sample(self, z, max_len=100, greedy=False, temperature=1.0, state=dict()):
         """
         Sample from X|z where z [B, Dz]
         """
@@ -429,7 +429,7 @@ class CorrelatedCategoricalsLM(GenerativeLM):
             prev_y = self.embedder(prev_y)
             hidden, pre_output = self.step(prev_y, hidden, z)
             logits = self.generate(pre_output)
-            px_z = Categorical(logits=logits)
+            px_z = Categorical(logits=logits/temperature)
             if greedy:
                 prediction = torch.argmax(logits, dim=-1)
             else:
