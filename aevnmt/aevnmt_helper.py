@@ -495,7 +495,7 @@ def re_sample(model, input_sentences, vocab_src,vocab_tgt, device, hparams, dete
             if hparams.sample_decoding_nucleus_p < 1.0:
                 raw_hypothesis=language_model.nucleus_sample(z,sampling_nucleus_p=hparams.sample_decoding_nucleus_p)
             else:
-                raw_hypothesis=language_model.sample(z,temperature=hparams.temperature)
+                raw_hypothesis=language_model.sample(z,temperature=hparams.sample_decoding_temperature)
         elif hparams.beam_width <= 1:
             raw_hypothesis=language_model.sample(z, greedy=True)
         else:
