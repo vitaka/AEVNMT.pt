@@ -369,6 +369,7 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         """
         Sample from X|z where z [B, Dz]
         """
+        greedy=False
         batch_size = z.size(0)
         hidden = self.init(z)
         prev_y = torch.full(size=[batch_size], fill_value=self.sos_idx, dtype=torch.long,
@@ -389,18 +390,18 @@ class CorrelatedCategoricalsLM(GenerativeLM):
             else:
                 if sampling_nucleus_p < 1.0:
                     #sort probs from high to low
-                    sortvals, sortidxs =py_x.probs.squeeze(dim=1).sort(descending=True)
+                    sortvals, sortidxs =px_z.probs.squeeze(dim=1).sort(descending=True)
                     #Sum probs
                     cumsums=sortvals.cumsum(dim=-1)
                     #original probs will be multiplied by these factors
                     probfactor=torch.where(cumsums >  sampling_nucleus_p, torch.zeros_like(cumsums), torch.ones_like(cumsums))
                     probfactor[:,0]=1.0
                     #But we need the factors in the original order, not in sorted probability order
-                    restored_probfactor = torch.empty_like(py_x.probs)
+                    restored_probfactor = torch.empty_like(px_z.probs)
                     #Probably there is a faster way of doing this..
-                    for i in range(py_x.probs.size(0)):
+                    for i in range(px_z.probs.size(0)):
                         restored_probfactor[i][0][ sortidxs[i] ]=probfactor[i]
-                    py_x=Categorical(probs=( py_x.probs * restored_probfactor ))
+                    px_z=Categorical(probs=( px_z.probs * restored_probfactor ))
                 prediction = px_z.sample()
             prev_y = prediction.view(batch_size)
             log_prob_pred = px_z.log_prob(prediction)

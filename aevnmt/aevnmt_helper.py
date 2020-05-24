@@ -366,7 +366,10 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     model.eval()
 
     # Create the validation dataloader. We can just bucket.
-    val_dl = DataLoader(val_data, batch_size=hparams.batch_size,
+    bs=hparams.batch_size
+    if  bs > 64:
+        bs=bs//2
+    val_dl = DataLoader(val_data, bs,
                         shuffle=False, num_workers=4)
     if vocab_tgt is not None:
         val_dl = BucketingParallelDataLoader(val_dl)
