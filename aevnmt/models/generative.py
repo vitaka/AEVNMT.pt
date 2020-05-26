@@ -114,6 +114,59 @@ class IndependentLM(GenerativeLM):
             x = likelihood.sample()
         return x
 
+class IndependentLMWithContext(GenerativeLM):
+    """
+    This draws source words from a single Categorical distribution
+        P(x|z) = \prod_{i=1}^m Cat(x_i|f(z))
+    where m = |x|.
+    """
+
+    def __init__(self, latent_size, embedder, tied_embeddings=False, dropout=0.5):
+        super().__init__()
+        vocab_size = embedder.num_embeddings
+        self.pad_idx = embedder.padding_idx
+        self.embedder=embedder
+
+        if tied_embeddings:
+            self.encoder = nn.Sequential(
+                    nn.Linear(latent_size, embedder.embedding_dim, bias=False),  # we want to keep this model from overfitting
+                    nn.Tanh(),
+                    nn.Dropout(dropout)  # think of this as Dropout applied to the input of the output layer
+            )
+            self.output_matrix = embedder.weight  # [V, Dx]
+        else:
+            self.encoder = nn.Dropout(dropout)  #nn.Identity()
+            self.output_matrix = nn.Parameter(torch.randn(vocab_size, latent_size))  # [V, Dz]
+
+    def forward(self, x, z, state=dict()) -> Categorical:
+        """
+        Return Categorical distributions
+            X_i|z ~ Cat(f(z))
+        with shape [B, 1, Vx]
+        """
+        #[B, T, d]
+        x_emb=self.embedder(x)
+
+        # [B, T, Vx]
+        logits = F.linear(self.encoder(torch.cat([z.unsqueeze(1),x_emb],dim=-1)), self.output_matrix)
+        # [B, 1, Vx]
+        return Categorical(logits=logits)
+
+    def log_prob(self, likelihood: Categorical, x):
+        return (likelihood.log_prob(x) * (x != self.pad_idx).float()).sum(-1)
+
+    def sample(self, z, max_len=100, greedy=False, state=dict()):
+        """
+        Sample from X|z where z [B, Dz]
+        """
+        raise NotImplementedError("Implement me!")
+        likelihood = self(None, z)  # TODO deal with max_len
+        if greedy:
+            x = torch.argmax(likelihood.logits, dim=-1)
+        else:
+            x = likelihood.sample()
+        return x
+
 class CorrelatedBernoullisLM(GenerativeLM):
     """
     This parameterises an autoregressive product of Bernoulli distributions,
@@ -444,6 +497,100 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         state['log_prob'] = torch.cat(log_probs, dim=1)
         return torch.cat(predictions, dim=1)
 
+class NonCorrelatedCategoricalsLM(GenerativeLM):
+    """
+    This implements an non autoregressive product of Categoricals likelihood, i.e.
+        P(x|z) = \prod_{i=1}^m Cat(x_i|f(z, x_{<i})
+    where m = |x|.
+    """
+
+    def __init__(self, embedder, sos_idx, eos_idx, latent_size, hidden_size,
+            dropout, num_layers, cell_type, gate_z):
+        super().__init__()
+        self.pad_idx = embedder.padding_idx
+        self.sos_idx = sos_idx
+        self.eos_idx = eos_idx
+        self.feed_z = True
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.init_layer = nn.Sequential(
+            nn.Linear(latent_size, hidden_size * num_layers),
+            nn.Tanh()
+        )
+        rnn_dropout = 0. if num_layers == 1 else dropout
+        rnn_fn = rnn_creation_fn(cell_type)
+        feed_z_size = latent_size
+        self.rnn = rnn_fn(feed_z_size, hidden_size,
+            batch_first=True, dropout=rnn_dropout, num_layers=num_layers)
+        self.tied_embeddings = False
+        self.pre_output_matrix=None
+        self.output_matrix = nn.Parameter(torch.randn(embedder.num_embeddings, hidden_size))
+
+        self.dropout_layer = nn.Dropout(p=dropout)
+
+        self.gate_linear=None
+        if gate_z:
+            self.gate_linear=nn.Linear(feed_z_size+hidden_size,feed_z_size)
+
+    def init(self, z):
+        hidden = tile_rnn_hidden(
+            # [num_layers, ..., hidden_size]
+            torch.stack(torch.split(self.init_layer(z), self.hidden_size, -1)),
+            self.rnn,
+            repeat_hidden=False)
+        return hidden
+
+    def generate(self, pre_output):
+        W = self.output_matrix
+        if self.pre_output_matrix is not None:
+            pre_output=F.linear(pre_output,self.pre_output_matrix)
+        return F.linear(pre_output, W)
+
+    def step(self, hidden, z):
+        #x_embed: [B,D_emb]
+        #hidden: [1, B, D_hidden]
+        #z: [B, D_latent]
+
+        #[B, 1, D]
+
+        if self.gate_linear is not None:
+            z_in=z * torch.sigmoid(self.gate_linear(torch.cat([x_embed,z,hidden.squeeze(0)],dim=-1)) )
+        else:
+            z_in=z
+        rnn_input= z_in.unsqueeze(1)
+        rnn_output, hidden = self.rnn(rnn_input, hidden)
+        rnn_output = self.dropout_layer(rnn_output)
+        return hidden, rnn_output
+
+    def unroll(self, num_steps, hidden, z):
+        # [B, Tx, Dx]
+        outputs = []
+        for t in range(num_steps):
+            # [B, 1, Dx]
+            hidden,rnn_output = self.step(hidden,z)
+            logits=self.generate(rnn_output)
+            outputs.append(logits)
+        return torch.cat(outputs, dim=1)
+
+    def forward(self, x, z, state=dict()) -> Categorical:
+        """
+        Return Categorical distributions
+            X_i|z, x_{<i} ~ Cat(f(z, x_{<i}))
+        with shape [B, Tx, Vx]
+        """
+        hidden = self.init(z)
+        # [B, Tx, Vx]
+        logits = self.unroll(x.size(1), hidden=hidden, z=z)
+        return Categorical(logits=logits)
+
+    def log_prob(self, likelihood: Categorical, x):
+        # [B, Tx] -> [B]
+        return (likelihood.log_prob(x) * (x != self.pad_idx).float()).sum(-1)
+
+    def log_prob_norm(self, likelihood: Categorical, x):
+        #import pdb; pdb.set_trace()
+        # [B, Tx] -> [B]
+        return (likelihood.log_prob(x) * (x != self.pad_idx).float()).sum(-1)/(x != self.pad_idx).float().sum(-1)
 
 class GenerativeTM(nn.Module):
     """

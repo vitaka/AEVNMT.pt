@@ -224,7 +224,7 @@ class AEVNMT(nn.Module):
         aux_lm_likelihoods = dict()
         if not disable_aux:
             for aux_name, aux_decoder in self.aux_lms.items():
-                if aux_name == "shuffled":
+                if aux_name == "shuffled" or aux_name == "skip_bigram_ff":
                     if x_shuf is not None:
                         aux_lm_likelihoods[aux_name] = aux_decoder(x_shuf, z)
                 else:
@@ -340,8 +340,8 @@ class AEVNMT(nn.Module):
         side_lm_likelihood = torch.zeros([len(aux_lm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
         side_lm_likelihood_per_token_norm = torch.zeros([len(aux_lm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
         for c, (aux_name, aux_likelihood) in enumerate(aux_lm_likelihoods.items()):
-            out_dict['lm/' + aux_name] = self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuf if aux_name == "shuffled" else targets_x )
-            if aux_name in [ "shuffled", "count_made" ]:
+            out_dict['lm/' + aux_name] = self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuf if aux_name == "shuffled" or aux_name == "skip_bigram_ff" else targets_x )
+            if aux_name in [ "shuffled", "count_made", "nonar", "skip_bigram_ff" ]:
                 #Create a new loss normalized by number of tokens
                 out_dict['lm/' + aux_name + '_normtok'] = self.log_likelihood_lm(aux_name, aux_likelihood, targets_x_shuf if aux_name == "shuffled" else targets_x ,per_token_norm=True)
             else:
