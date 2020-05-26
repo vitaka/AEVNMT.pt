@@ -13,7 +13,7 @@ from aevnmt.data import create_batch, batch_to_sentences
 from aevnmt.data.utils import create_noisy_batch
 from aevnmt.components import DetachedEmbeddingLayer, RNNEncoder, beam_search, greedy_decode, sampling_decode
 from aevnmt.models import AEVNMT
-from aevnmt.models.generative import GenerativeLM, IndependentLM, CorrelatedBernoullisLM
+from aevnmt.models.generative import GenerativeLM, IndependentLM, CorrelatedBernoullisLM,IndependentLMWithContext
 from aevnmt.models.generative import CorrelatedCategoricalsLM, NonCorrelatedCategoricalsLM,  CorrelatedPoissonsLM
 from aevnmt.models.generative import GenerativeTM, IndependentTM, CorrelatedBernoullisTM, CorrelatedCategoricalsTM
 from aevnmt.models.generative import CorrelatedPoissonsTM, IBM1TM, AttentionBasedTM

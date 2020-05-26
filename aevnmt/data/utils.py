@@ -78,7 +78,7 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
             else:
                 sentences=[  " ".join(np.random.permutation(s.split(" "))) for s in sentences  ]
     elif skip_bigrams:
-        sentences=[]
+        new_sentences=[]
         refs=[]
         for s in sentences:
             splits=s.split(" ")
@@ -86,19 +86,28 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
             #If number of tokens is odd, remove last one
             if len(splits) % 2 != 0:
                 perm_indexes=perm_indexes[:-1]
-            sentences.append( " ".join(np.array(splits)[ perm_indexes[::2] ])  )
-            refs.append( " ".join(np.array(splits)[ perm_indexes[1::2] ])  )
+            if len(perm_indexes) > 0:
+                new_sentences.append( " ".join(np.array(splits)[ perm_indexes[::2] ])  )
+                refs.append( " ".join(np.array(splits)[ perm_indexes[1::2] ])  )
+        sentences=new_sentences
+
+#        print(sentences)
+#        print(refs)
+#        print([len(s.split()) for s in sentences ] )
+#        print([len(s.split()) for s in refs ] )
 
     # sentences is a list of np arrays with int64 in it
     if map_to_ids:
         sentences = [[vocab[w] for w in sen.split()] for sen in sentences]
+
     # from here sentences are already made of token ids
     if not skip_bigrams:
         tok = np.array([[vocab[SOS_TOKEN]] + sen + [vocab[EOS_TOKEN]] for sen in sentences])
         seq_lengths = [len(sen)-1 for sen in tok]
     else:
-        tok = np.array([sen for sen in sentences])
+        tok = np.array([ sen for sen in sentences])
         seq_lengths = [len(sen) for sen in tok]
+
     max_len = max(seq_lengths)
     pad_id = vocab[PAD_TOKEN]
     pad_id_input = [
@@ -120,11 +129,15 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
             [sen[t+1] if t < seq_lengths[idx] else pad_id for t in range(max_len)]
                 for idx, sen in enumerate(tok)]
     else:
-        prevs = [[vocab[w] for w in sen.split()] for sen in prevs]
-        tok_prevs = np.array([sen for sen in prevs])
+        refs = [[vocab[w] for w in sen.split()] for sen in refs]
+        tok_refs = np.array([sen for sen in refs])
+
+        print(seq_lengths)
+        print([len(sen) for idx, sen in enumerate(tok_refs)])
+
         pad_id_output = [
             [sen[t] if t < seq_lengths[idx] else pad_id for t in range(max_len)]
-                for idx, sen in enumerate(tok_prevs)]
+                for idx, sen in enumerate(tok_refs)]
 
     # Convert everything to PyTorch tensors.
     batch_input = torch.tensor(pad_id_input)
