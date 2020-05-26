@@ -369,6 +369,8 @@ def validate(model, val_data, vocab_src, vocab_tgt, device, hparams, step, title
     bs=hparams.batch_size
     if  bs > 64:
         bs=bs//2
+    if num_importance_samples > 10:
+        bs=bs//2
     val_dl = DataLoader(val_data, bs,
                         shuffle=False, num_workers=4)
     if vocab_tgt is not None:
