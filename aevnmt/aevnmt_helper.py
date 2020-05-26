@@ -80,6 +80,19 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
             feed_z=hparams.feed_z,
             gate_z=hparams.gate_z
         )
+    if hparams.nonar_lm:
+        lms['nonar'] =  NonCorrelatedCategoricalsLM(
+                 vocab_size=src_embedder.num_embeddings,
+                 sos_idx=vocab_src[SOS_TOKEN],
+                 eos_idx=vocab_src[EOS_TOKEN],
+                 latent_size=hparams.latent_size,
+                 hidden_size=hparams.hidden_size,
+                 dropout=hparams.dropout,
+                 num_layers=hparams.num_dec_layers,
+                 cell_type=hparams.cell_type,
+                 gate_z=hparams.gate_z
+             )
+
     return lms
 
 

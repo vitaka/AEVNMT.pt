@@ -93,6 +93,7 @@ options = {
     "MADE_normalize_weight_num_preds":(bool, False, False, "Normalize MADE weight: multiply loss by num_predictions_lm/num_predictions_MADE", 1),
     "MADE_size": (int, 0, False, "The size of the MADE hidden layers. If set to 0, hidden_size is used.", 1),
     "shuffle_lm":(bool, False, False, "z is also used to produce source sentences with a shuffled LM instead of a reverse LM", 1),
+    "nonar_lm":(bool, False, False, "z is also used to produce source sentences with a non-autoregressive LM", 1),
     "shuffle_lm_tl":(bool, False, False, "z is also used to produce target sentences with a shuffled LM instead of a reverse LM", 1),
     "shuffle_lm_keep_bpe":(bool, False, False, "Shuffle whole words instead of BPE fragments.", 1),
     "shuffle_lm_skip_bigram":(bool, False, False, "Ensure pairs of of words in shuffled sentences follow original word order.", 1),
