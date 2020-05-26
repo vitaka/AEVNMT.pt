@@ -14,7 +14,7 @@ from aevnmt.data.utils import create_noisy_batch
 from aevnmt.components import DetachedEmbeddingLayer, RNNEncoder, beam_search, greedy_decode, sampling_decode
 from aevnmt.models import AEVNMT
 from aevnmt.models.generative import GenerativeLM, IndependentLM, CorrelatedBernoullisLM
-from aevnmt.models.generative import CorrelatedCategoricalsLM, CorrelatedPoissonsLM
+from aevnmt.models.generative import CorrelatedCategoricalsLM, NonCorrelatedCategoricalsLM,  CorrelatedPoissonsLM
 from aevnmt.models.generative import GenerativeTM, IndependentTM, CorrelatedBernoullisTM, CorrelatedCategoricalsTM
 from aevnmt.models.generative import CorrelatedPoissonsTM, IBM1TM, AttentionBasedTM
 from aevnmt.models.inference import InferenceModel, BasicInferenceModel, SwitchingInferenceModel
@@ -82,7 +82,7 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
         )
     if hparams.nonar_lm:
         lms['nonar'] =  NonCorrelatedCategoricalsLM(
-                 vocab_size=src_embedder.num_embeddings,
+                 embedder=src_embedder,
                  sos_idx=vocab_src[SOS_TOKEN],
                  eos_idx=vocab_src[EOS_TOKEN],
                  latent_size=hparams.latent_size,

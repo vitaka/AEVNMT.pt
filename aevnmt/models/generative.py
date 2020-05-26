@@ -451,10 +451,9 @@ class NonCorrelatedCategoricalsLM(GenerativeLM):
     where m = |x|.
     """
 
-    def __init__(self, vocab_size, sos_idx, eos_idx, latent_size, hidden_size,
+    def __init__(self, embedder, sos_idx, eos_idx, latent_size, hidden_size,
             dropout, num_layers, cell_type, gate_z):
         super().__init__()
-        self.embedder = embedder
         self.pad_idx = embedder.padding_idx
         self.sos_idx = sos_idx
         self.eos_idx = eos_idx
@@ -467,18 +466,18 @@ class NonCorrelatedCategoricalsLM(GenerativeLM):
         )
         rnn_dropout = 0. if num_layers == 1 else dropout
         rnn_fn = rnn_creation_fn(cell_type)
-        feed_z_size = latent_size if feed_z else 0
+        feed_z_size = latent_size
         self.rnn = rnn_fn(feed_z_size, hidden_size,
             batch_first=True, dropout=rnn_dropout, num_layers=num_layers)
         self.tied_embeddings = False
         self.pre_output_matrix=None
-        self.output_matrix = nn.Parameter(torch.randn(vocab_size, hidden_size))
+        self.output_matrix = nn.Parameter(torch.randn(embedder.num_embeddings, hidden_size))
 
         self.dropout_layer = nn.Dropout(p=dropout)
 
         self.gate_linear=None
         if gate_z:
-            self.gate_linear=nn.Linear(embedder.embedding_dim+feed_z_size+hidden_size,feed_z_size)
+            self.gate_linear=nn.Linear(feed_z_size+hidden_size,feed_z_size)
 
     def init(self, z):
         hidden = tile_rnn_hidden(
