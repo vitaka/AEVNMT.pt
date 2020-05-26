@@ -357,10 +357,12 @@ def train(model,
                 x_in, x_out, seq_mask_x, seq_len_x, noisy_x_in = create_noisy_batch(
                     sentences_x, vocab_src, device, word_dropout=hparams.word_dropout)  # TODO: should we use word dropout?
 
-                if 'shuffled' in model.aux_lms:
+                #TODO: do this for dev and test
+                if 'shuffled' in model.aux_lms or 'skip_bigram_ff' in model.aux_lms:
+                    assert not ('shuffled' in model.aux_lms and 'skip_bigram_ff' in model.aux_lms)
                     x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
                         sentences_x, vocab_src, device,
-                        word_dropout=hparams.word_dropout,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram,shuffle_dict=shuffle_dict_sl if hparams.shuffle_lm_keep_epochs else None)
+                        word_dropout=hparams.word_dropout,shuffle_toks=('shuffled' in model.aux_lms),full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram,shuffle_dict=shuffle_dict_sl if hparams.shuffle_lm_keep_epochs else None,skip_bigrams=('skip_bigram_ff' in model.aux_lms))
                 else:
                     x_shuf_in=x_shuf_out=seq_mask_x_shuf=seq_len_x_shuf=noisy_x_shuf_in=None
 

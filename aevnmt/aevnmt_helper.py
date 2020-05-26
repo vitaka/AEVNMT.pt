@@ -92,6 +92,12 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
                  cell_type=hparams.cell_type,
                  gate_z=hparams.gate_z
              )
+    if hparams.skip_bigram_ff_loss:
+        lms['skip_bigram_ff']= IndependentLMWithContext(
+            latent_size=hparams.latent_size,
+            embedder=src_embedder,
+            tied_embeddings=False,
+            dropout=0.5)
 
     return lms
 
@@ -683,8 +689,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
             x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
                 sentences_x, vocab_src, device,
-                word_dropout=0.0,shuffle_toks=True,full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram)
-
+                word_dropout=0.0,shuffle_toks=('shuffled' in model.aux_lms),full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram,skip_bigrams=('skip_bigram_ff' in model.aux_lms))
 
             if vocab_tgt is not None:
                 y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)

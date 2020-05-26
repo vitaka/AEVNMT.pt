@@ -17,7 +17,7 @@ def skip_bigram_indexes(splits):
             perm_indexes[i+1]=tmp
     return perm_indexes
 
-def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=True, shuffle_toks=False,full_words_shuf=False,skip_bigram_shuf=False,shuffle_dict=None):
+def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=True, shuffle_toks=False,full_words_shuf=False,skip_bigram_shuf=False,shuffle_dict=None,skip_bigrams=False):
     """
     Converts a list of sentences to a padded batch of word ids. Returns
     an input batch, an output batch shifted by one, a sequence mask over
@@ -77,13 +77,28 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
                 sentences=new_sentences
             else:
                 sentences=[  " ".join(np.random.permutation(s.split(" "))) for s in sentences  ]
+    elif skip_bigrams:
+        sentences=[]
+        refs=[]
+        for s in sentences:
+            splits=s.split(" ")
+            perm_indexes=skip_bigram_indexes(splits)
+            #If number of tokens is odd, remove last one
+            if len(splits) % 2 != 0:
+                perm_indexes=perm_indexes[:-1]
+            sentences.append( " ".join(np.array(splits)[ perm_indexes[::2] ])  )
+            refs.append( " ".join(np.array(splits)[ perm_indexes[1::2] ])  )
 
     # sentences is a list of np arrays with int64 in it
     if map_to_ids:
         sentences = [[vocab[w] for w in sen.split()] for sen in sentences]
     # from here sentences are already made of token ids
-    tok = np.array([[vocab[SOS_TOKEN]] + sen + [vocab[EOS_TOKEN]] for sen in sentences])
-    seq_lengths = [len(sen)-1 for sen in tok]
+    if not skip_bigrams:
+        tok = np.array([[vocab[SOS_TOKEN]] + sen + [vocab[EOS_TOKEN]] for sen in sentences])
+        seq_lengths = [len(sen)-1 for sen in tok]
+    else:
+        tok = np.array([sen for sen in sentences])
+        seq_lengths = [len(sen) for sen in tok]
     max_len = max(seq_lengths)
     pad_id = vocab[PAD_TOKEN]
     pad_id_input = [
@@ -99,10 +114,17 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
     else:
         noisy_input = pad_id_input
 
-    # The output batch is shifted by 1.
-    pad_id_output = [
-        [sen[t+1] if t < seq_lengths[idx] else pad_id for t in range(max_len)]
-            for idx, sen in enumerate(tok)]
+    if not skip_bigrams:
+        # The output batch is shifted by 1.
+        pad_id_output = [
+            [sen[t+1] if t < seq_lengths[idx] else pad_id for t in range(max_len)]
+                for idx, sen in enumerate(tok)]
+    else:
+        prevs = [[vocab[w] for w in sen.split()] for sen in prevs]
+        tok_prevs = np.array([sen for sen in prevs])
+        pad_id_output = [
+            [sen[t] if t < seq_lengths[idx] else pad_id for t in range(max_len)]
+                for idx, sen in enumerate(tok_prevs)]
 
     # Convert everything to PyTorch tensors.
     batch_input = torch.tensor(pad_id_input)

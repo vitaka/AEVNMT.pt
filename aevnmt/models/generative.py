@@ -114,6 +114,59 @@ class IndependentLM(GenerativeLM):
             x = likelihood.sample()
         return x
 
+class IndependentLMWithContext(GenerativeLM):
+    """
+    This draws source words from a single Categorical distribution
+        P(x|z) = \prod_{i=1}^m Cat(x_i|f(z))
+    where m = |x|.
+    """
+
+    def __init__(self, latent_size, embedder, tied_embeddings=False, dropout=0.5):
+        super().__init__()
+        vocab_size = embedder.num_embeddings
+        self.pad_idx = embedder.padding_idx
+        self.embedder=embedder
+
+        if tied_embeddings:
+            self.encoder = nn.Sequential(
+                    nn.Linear(latent_size, embedder.embedding_dim, bias=False),  # we want to keep this model from overfitting
+                    nn.Tanh(),
+                    nn.Dropout(dropout)  # think of this as Dropout applied to the input of the output layer
+            )
+            self.output_matrix = embedder.weight  # [V, Dx]
+        else:
+            self.encoder = nn.Dropout(dropout)  #nn.Identity()
+            self.output_matrix = nn.Parameter(torch.randn(vocab_size, latent_size))  # [V, Dz]
+
+    def forward(self, x, z, state=dict()) -> Categorical:
+        """
+        Return Categorical distributions
+            X_i|z ~ Cat(f(z))
+        with shape [B, 1, Vx]
+        """
+        #[B, T, d]
+        x_emb=self.embedder(x)
+
+        # [B, T, Vx]
+        logits = F.linear(self.encoder(torch.cat([z.unsqueeze(1),x_emb],dim=-1)), self.output_matrix)
+        # [B, 1, Vx]
+        return Categorical(logits=logits)
+
+    def log_prob(self, likelihood: Categorical, x):
+        return (likelihood.log_prob(x) * (x != self.pad_idx).float()).sum(-1)
+
+    def sample(self, z, max_len=100, greedy=False, state=dict()):
+        """
+        Sample from X|z where z [B, Dz]
+        """
+        raise NotImplementedError("Implement me!")
+        likelihood = self(None, z)  # TODO deal with max_len
+        if greedy:
+            x = torch.argmax(likelihood.logits, dim=-1)
+        else:
+            x = likelihood.sample()
+        return x
+
 class CorrelatedBernoullisLM(GenerativeLM):
     """
     This parameterises an autoregressive product of Bernoulli distributions,

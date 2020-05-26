@@ -83,6 +83,7 @@ options = {
     "feed_z":(bool, False, False, "Concatenate z to the previous word embeddings at each timestep", 1),
     "gate_z":(bool, False, False, "Modfify z with a gating mechanism", 1),
 
+    "skip_bigram_ff_loss":(bool, False, False, "Add skip bigram loss.", 1),
     "bow_loss":(bool, False, False, "Add SL bag-of-words term to the loss", 1),
     "bow_loss_tl":(bool, False, False, "Add TL bag-of-words term to the loss", 1),
     "MADE_loss":(bool, False, False, "Add SL MADE term to the loss", 1),
