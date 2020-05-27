@@ -136,8 +136,8 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
         refs = [[vocab[w] for w in sen.split()] for sen in refs]
         tok_refs = np.array([sen for sen in refs])
 
-        print(seq_lengths)
-        print([len(sen) for idx, sen in enumerate(tok_refs)])
+        #print(seq_lengths)
+        #print([len(sen) for idx, sen in enumerate(tok_refs)])
 
         pad_id_output = [
             [sen[t] if t < seq_lengths[idx] else pad_id for t in range(max_len)]

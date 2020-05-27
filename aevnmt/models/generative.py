@@ -146,7 +146,7 @@ class IndependentLMWithContext(GenerativeLM):
         """
         #[B, T, d]
         x_emb=self.embedder(x)
-
+        
         # [B, T, Vx]
         logits = F.linear(self.encoder(torch.cat([z.unsqueeze(1).repeat([1, x.size(1), 1]),x_emb],dim=-1)), self.output_matrix)
         # [B, 1, Vx]
