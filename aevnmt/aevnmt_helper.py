@@ -311,6 +311,8 @@ def create_model(hparams, vocab_src, vocab_tgt):
         tgt_embedder_for_inf,
         hparams)
 
+    if hparams.lag_side is not None:
+        print("Your lagrangian constraints refer to the following LMs: "+str(sorted(aux_lms.keys())))
     model = AEVNMT(
         latent_size=hparams.latent_size,
         src_embedder=src_embedder,

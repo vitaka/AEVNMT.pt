@@ -48,11 +48,11 @@ class AEVNMT(nn.Module):
             self.lag = None
 
         if lag_side is not None:
-            self.lag_side= torch.nn.Sequential(
+            self.lag_side= torch.nn.ModuleList([torch.nn.Sequential(
                 torch.nn.Dropout(0.5),
                 torch.nn.Linear(1, 1),
                 torch.nn.Softplus()
-            )
+            ) for i in range(len(lag_side)) ])
             self.lag_side_target=lag_side
         else:
             self.lag_side= None
@@ -128,17 +128,17 @@ class AEVNMT(nn.Module):
         else:
             return self.lag.parameters()
 
-    def lagrangian_multiplier_side(self, device):
+    def lagrangian_multiplier_side(self, id,device):
         if self.lag_side is None:
             raise ValueError("You are not using Lagrangian side losses target, thus there's no Lagrangian multiplier")
         else:
-            return self.lag_side(torch.zeros(1, device=device))
+            return self.lag_side[id](torch.zeros(1, device=device))
 
-    def lag_side_parameters(self):
+    def lag_side_parameters(self,id):
         if self.lag_side is None:
             return []
         else:
-            return self.lag_side.parameters()
+            return self.lag_side[id].parameters()
 
     def lagrangian_multiplier_divergence(self, device):
         if self.lag_divergence is None:
@@ -337,6 +337,8 @@ class AEVNMT(nn.Module):
 
         # Alternative views of p(x|z)
         # [Cx, B]
+        side_lm_likelihoods_lagr=dict()
+
         side_lm_likelihood = torch.zeros([len(aux_lm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
         side_lm_likelihood_per_token_norm = torch.zeros([len(aux_lm_likelihoods), KL.size(0)], dtype=KL.dtype, device=KL.device)
         for c, (aux_name, aux_likelihood) in enumerate(aux_lm_likelihoods.items()):
@@ -352,6 +354,9 @@ class AEVNMT(nn.Module):
                 w=targets_x.size(1)/(1.0*self.aux_lms[aux_name].vocab_size)
             side_lm_likelihood[c] = out_dict['lm/' + aux_name]
             side_lm_likelihood_per_token_norm[c] = out_dict['lm/' + aux_name + '_normtok']
+            side_lm_likelihoods_lagr[aux_name]=out_dict['lm/' + aux_name]
+        side_lm_names=sorted(side_lm_likelihoods_lagr.keys())
+
 
         # Alternative views of p(y|z,x)
         # [Cy, B]
@@ -385,29 +390,33 @@ class AEVNMT(nn.Module):
             lag_side_term=0.0
             #Lagrangian multiplier if needed
             if self.lag_side is not None:
-                u = self.lagrangian_multiplier_side(aux_log_likelihood.device)
-                if self.lag_side_elbo:
-                    if self.lag_side_normtok:
-                        rate = -side_elbo_per_token_norm.mean()
+                for i in range(len(self.lag_side)):
+                    u = self.lagrangian_multiplier_side(i,aux_log_likelihood.device)
+                    if self.lag_side_elbo:
+                        assert i==0
+                        if self.lag_side_normtok:
+                            rate = -side_elbo_per_token_norm.mean()
+                        else:
+                            rate = -side_elbo.mean()
                     else:
-                        rate = -side_elbo.mean()
-                else:
-                    if self.lag_side_normtok:
-                        rate = -aux_log_likelihood_per_token_norm.mean()
-                    else:
-                        rate = -aux_log_likelihood.mean()
-                lag_side_term = u.detach() * (rate -  self.lag_side_target )
-                #If current neg. side ELBO > target neg. side ELBO, constraint
-                #has not been met. Difference is positive, in order to
-                #minimize lag_side_loss, u should be big
+                        if self.lag_side_normtok:
+                            assert i==0
+                            rate = -aux_log_likelihood_per_token_norm.mean()
+                        else:
+                            rate = -side_lm_likelihoods_lagr[side_lm_names[i]].mean()
+                    lag_side_term += ( u.detach() * (rate -  self.lag_side_target[i] ))
+                    #If current neg. side ELBO > target neg. side ELBO, constraint
+                    #has not been met. Difference is positive, in order to
+                    #minimize lag_side_loss, u should be big
 
-                #If current neg. side ELBO < target neg. side ELBO, constraint
-                #has been met. Difference is negative, in order to minimize
-                #lag_side_loss, u should be zero
-                lag_side_loss = - u * ( rate.detach() - self.lag_side_target)
-                out_dict['lag_side_loss'] = lag_side_loss
-                out_dict['lag_difference']=rate.detach() - self.lag_side_target
-                out_dict['lag_u']=u.detach()
+                    #If current neg. side ELBO < target neg. side ELBO, constraint
+                    #has been met. Difference is negative, in order to minimize
+                    #lag_side_loss, u should be zero
+                    lag_side_loss = - u * ( rate.detach() - self.lag_side_target[i])
+
+                    out_dict['lag_side_loss_'+str(i)] = lag_side_loss
+                    out_dict['lag_difference_'+str(i)]=rate.detach() - self.lag_side_target[i]
+                    out_dict['lag_u_'+str(i)]=u.detach()
                 loss = - (elbo - lag_side_term - mdr_term)
             else:
                 loss = - (elbo + aux_log_likelihood - mdr_term)

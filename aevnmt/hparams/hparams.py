@@ -15,8 +15,9 @@ class ListOfInts(list):
 class ListOfFloats(list):
 
     def __init__(self, values):
+        print("processing list of floats: {}".format(values))
         if isinstance(values, str):
-            values = (float(v) for v in values.split())
+            values = (float(v) for v in values.split(','))
         else:
             values = (float(v) for v in values)
         super(ListOfFloats, self).__init__(values)
@@ -229,7 +230,7 @@ options = {
     "disconnect_inference_network": (bool, False, False, "Disconnect inference network", 6),
     "z_zero": (bool, False, False, "z is always zero (RNNLM)", 6),
     "disable_main_loss": (bool, False, False, "Train only side losses, always. Use me together with criterion 'side_likelihood' ", 6),
-    "lag_side": (float,None,False,"Use lagrange multiplier to obtimize main ELBO subject to negative side NLL is lower than this amount", 6),
+    "lag_side": (ListOfFloats,None,False,"Use lagrange multiplier to obtimize main ELBO subject to negative side NLL is lower than this amount", 6),
     "lag_side_normtok": (bool, False, False,"Lagrange multiplier operates on side losses normalized per sentence, to avoid oscillations", 6),
     "lag_side_elbo": (bool, False, False,"Lagrange multiplier operates on side losses ELBO", 6),
     "init_lag_side_uniform": (bool, False, False,"Initialize Lagrange multiplier weight to 1", 6),
