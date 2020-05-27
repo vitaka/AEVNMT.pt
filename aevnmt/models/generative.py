@@ -129,14 +129,14 @@ class IndependentLMWithContext(GenerativeLM):
 
         if tied_embeddings:
             self.encoder = nn.Sequential(
-                    nn.Linear(latent_size, embedder.embedding_dim, bias=False),  # we want to keep this model from overfitting
+                    nn.Linear(latent_size+embedder.embedding_dim, embedder.embedding_dim, bias=False),  # we want to keep this model from overfitting
                     nn.Tanh(),
                     nn.Dropout(dropout)  # think of this as Dropout applied to the input of the output layer
             )
             self.output_matrix = embedder.weight  # [V, Dx]
         else:
             self.encoder = nn.Dropout(dropout)  #nn.Identity()
-            self.output_matrix = nn.Parameter(torch.randn(vocab_size, latent_size))  # [V, Dz]
+            self.output_matrix = nn.Parameter(torch.randn(vocab_size, latent_size+embedder.embedding_dim))  # [V, Dz]
 
     def forward(self, x, z, state=dict()) -> Categorical:
         """
@@ -148,7 +148,7 @@ class IndependentLMWithContext(GenerativeLM):
         x_emb=self.embedder(x)
 
         # [B, T, Vx]
-        logits = F.linear(self.encoder(torch.cat([z.unsqueeze(1),x_emb],dim=-1)), self.output_matrix)
+        logits = F.linear(self.encoder(torch.cat([z.unsqueeze(1).repeat([1, x.size(1), 1]),x_emb],dim=-1)), self.output_matrix)
         # [B, 1, Vx]
         return Categorical(logits=logits)
 
