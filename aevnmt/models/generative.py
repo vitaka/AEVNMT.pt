@@ -154,7 +154,10 @@ class IndependentLMWithContext(GenerativeLM):
         logits_a=F.linear(self.encoder_a(z),self.output_matrix_a)
 
         # [B, T, Vx]
-        log_prob_a = Categorical(logits=repeat(logits_a, [1, x.size(1), 1]).log_prob(x)  # [B, T, V])
+        log_prob_a = Categorical(logits=logits_a.unsqueeze(1).repeat( [1, x.size(1), 1])).log_prob(x)  # [B, T])
+
+        # [B,T,1]
+        log_prob_a = log_prob_a.unsqueeze(-1)
 
         # [B, T, Vx]
         log_prob_b_given_a = F.log_softmax(F.linear(self.encoder(torch.cat([z.unsqueeze(1).repeat([1, x.size(1), 1]),x_emb],dim=-1)), self.output_matrix))
