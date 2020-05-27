@@ -89,6 +89,10 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
             if len(perm_indexes) > 0:
                 new_sentences.append( " ".join(np.array(splits)[ perm_indexes[::2] ])  )
                 refs.append( " ".join(np.array(splits)[ perm_indexes[1::2] ])  )
+            else:
+                #Append a pad tken
+                new_sentences.append(PAD_TOKEN)
+                refs.append(PAD_TOKEN)
         sentences=new_sentences
 
 #        print(sentences)
