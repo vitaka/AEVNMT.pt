@@ -208,12 +208,13 @@ def senvae_monolingual_step_x(
         tracker.update('MRD/loss', mono_vae_terms['mdr_loss'].sum().item())
 
     if hparams.lag_side is not None:
-        optimizers['lag_side'].zero_grad()
-        mono_vae_terms['lag_side_loss'].backward()
-        optimizers['lag_side'].step()
-        tracker.update('LagSide/loss', mono_vae_terms['lag_side_loss'].sum().item())
-        tracker.update('LagSide/difference', mono_vae_terms['lag_difference'].sum().item())
-        tracker.update('LagSide/u', mono_vae_terms['lag_u'].item())
+        for i in range(len(model.lag_side)):
+            optimizers['lag_side_'+str(i)].zero_grad()
+            mono_vae_terms['lag_side_loss_'+str(i)].backward()
+            optimizers['lag_side_'+str(i)].step()
+            tracker.update('LagSide/loss_'+str(i), mono_vae_terms['lag_side_loss_'+str(i)].sum().item())
+            tracker.update('LagSide/difference_'+str(i), mono_vae_terms['lag_difference_'+str(i)].sum().item())
+            tracker.update('LagSide/u_'+str(i), mono_vae_terms['lag_u_'+str(i)].item())
 
     tracker.update('SenVAE/JSpriordec', mono_vae_terms['JSpriordec'].sum().item())
     if hparams.lag_divergence is not None:
@@ -418,9 +419,9 @@ def train(model,
 #                          f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
                           #f"tokennorm_side_loss(x) = {tracker_x.avg('SenVAE/sideLossTokenNorm','num_sentences'):,.2f} -- "
                           f"tokennorm_side_ELBO(x) = {tracker_x.avg('SenVAE/sideELBOTokenNorm','num_sentences'):,.2f} -- "
-                          f"lag_side(x) = {tracker_x.mean('LagSide/loss'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
-                          f"lag_divergence_u = {tracker_x.mean('LagDivergence/u'):,.2f}-- "
-                          f"lag_diff(x) = {tracker_x.mean('LagSide/difference'):,.2f} -- "
+                          f"lag_side(x) = {tracker_x.mean('LagSide/loss_0'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
+                          f"lag_divergence_u = {tracker_x.mean('LagDivergence/u_0'):,.2f}-- "
+                          f"lag_diff(x) = {tracker_x.mean('LagSide/difference_0'):,.2f} -- "
                           f"JSpriordec(x) = {tracker_x.avg('SenVAE/JSpriordec','num_tokens'):,.2f} -- "
                           #f"JSpriordec(x) = {tracker_x.mean('SenVAE/JSpriordec'):,.2f} -- "
                           f"{tokens_per_sec:,.0f} tokens/s -- "
@@ -436,9 +437,9 @@ def train(model,
         if hparams.evaluate_every <= 0:
             save_eval=True
             if model.lag_side is not None:
-                bias=model.lag_side[1].bias.item()
+                bias=model.lag_side[0][1].bias.item()
                 with torch.no_grad():
-                    u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
+                    u=model.lag_side[0](torch.zeros(1,device=x_in.device)).item()
                     if u > 5:
                         save_eval=False
             print("Evaluating with save_eval={} and u={}".format(save_eval,u))
@@ -504,7 +505,7 @@ def main():
         gen_parameters=model.generative_parameters(),
         inf_z_parameters=model.inference_parameters(),
         mdr_parameters=model.mdr_parameters(),
-        lag_side_parameters=model.lag_side_parameters(),
+        lag_side_parameters=[model.lag_side_parameters(i) for i in range(len(model.lag_side))] if model.lag_side is not None else None,
         lag_divergence_parameters=model.lag_divergence_parameters())
     device = torch.device("cuda:0") if hparams.use_gpu else torch.device("cpu")
     model = model.to(device)

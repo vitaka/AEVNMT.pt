@@ -99,13 +99,14 @@ def construct_optimizers(hparams, gen_parameters, inf_z_parameters, mdr_paramete
             1e-4
         )
 
-    if lag_side_parameters:
-        optimizers["lag_side"] = get_optimizer(
-            "rmsprop",
-            lag_side_parameters,
-            1e-2,
-            1e-4
-        )
+    if lag_side_parameters is not None:
+        for i in range(len(lag_side_parameters)):
+            optimizers["lag_side_"+str(i)] = get_optimizer(
+                "rmsprop",
+                lag_side_parameters[i],
+                1e-2,
+                1e-4
+            )
 
     if lag_divergence_parameters:
         optimizers["lag_divergence"] = get_optimizer(
