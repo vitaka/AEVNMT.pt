@@ -543,9 +543,10 @@ def main():
     #Custom initialization of lagrangian multiplier
     if hparams.init_lag_side_uniform:
         print("Initilazing Lagrange multiplier weight to 1 for side losses")
-        for name,param in model.lag_side.named_parameters():
-            if name == '1.bias':
-                nn.init.constant_(param,0.55)
+        for i in range(len(model.lag_side)):
+            for name,param in model.lag_side[i].named_parameters():
+                if name == '1.bias':
+                    nn.init.constant_(param,0.55)
 
     # Create the output directories.
     out_dir = Path(hparams.output_dir)
