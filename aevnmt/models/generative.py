@@ -138,6 +138,9 @@ class IndependentLMWithContext(GenerativeLM):
             self.encoder = nn.Dropout(dropout)  #nn.Identity()
             self.output_matrix = nn.Parameter(torch.randn(vocab_size, latent_size+embedder.embedding_dim))  # [V, Dz]
 
+        self.encoder_a=nn.Dropout(dropout)
+        self.output_matrix_a=nn.Parameter(torch.randn(vocab_size, latent_size))
+
     def forward(self, x, z, state=dict()) -> Categorical:
         """
         Return Categorical distributions
@@ -146,9 +149,18 @@ class IndependentLMWithContext(GenerativeLM):
         """
         #[B, T, d]
         x_emb=self.embedder(x)
-        
+
+        #[B, Vx]
+        logits_a=F.linear(self.encoder_a(z),self.output_matrix_a)
+
         # [B, T, Vx]
-        logits = F.linear(self.encoder(torch.cat([z.unsqueeze(1).repeat([1, x.size(1), 1]),x_emb],dim=-1)), self.output_matrix)
+        log_prob_a = Categorical(logits=repeat(logits_a, [1, x.size(1), 1]).log_prob(x)  # [B, T, V])
+
+        # [B, T, Vx]
+        log_prob_b_given_a = F.log_softmax(F.linear(self.encoder(torch.cat([z.unsqueeze(1).repeat([1, x.size(1), 1]),x_emb],dim=-1)), self.output_matrix))
+
+        logits = log_prob_a + log_prob_b_given_a
+
         # [B, 1, Vx]
         return Categorical(logits=logits)
 
