@@ -129,14 +129,17 @@ class IndependentLMWithContext(GenerativeLM):
 
         if tied_embeddings:
             self.encoder = nn.Sequential(
-                    nn.Linear(latent_size, embedder.embedding_dim, bias=False),  # we want to keep this model from overfitting
+                    nn.Linear(latent_size+embedder.embedding_dim, embedder.embedding_dim, bias=False),  # we want to keep this model from overfitting
                     nn.Tanh(),
                     nn.Dropout(dropout)  # think of this as Dropout applied to the input of the output layer
             )
             self.output_matrix = embedder.weight  # [V, Dx]
         else:
             self.encoder = nn.Dropout(dropout)  #nn.Identity()
-            self.output_matrix = nn.Parameter(torch.randn(vocab_size, latent_size))  # [V, Dz]
+            self.output_matrix = nn.Parameter(torch.randn(vocab_size, latent_size+embedder.embedding_dim))  # [V, Dz]
+
+        self.encoder_a=nn.Dropout(dropout)
+        self.output_matrix_a=nn.Parameter(torch.randn(vocab_size, latent_size))
 
     def forward(self, x, z, state=dict()) -> Categorical:
         """
@@ -147,8 +150,20 @@ class IndependentLMWithContext(GenerativeLM):
         #[B, T, d]
         x_emb=self.embedder(x)
 
+        #[B, Vx]
+        logits_a=F.linear(self.encoder_a(z),self.output_matrix_a)
+
         # [B, T, Vx]
-        logits = F.linear(self.encoder(torch.cat([z.unsqueeze(1),x_emb],dim=-1)), self.output_matrix)
+        log_prob_a = Categorical(logits=logits_a.unsqueeze(1).repeat( [1, x.size(1), 1])).log_prob(x)  # [B, T])
+
+        # [B,T,1]
+        log_prob_a = log_prob_a.unsqueeze(-1)
+
+        # [B, T, Vx]
+        log_prob_b_given_a = F.log_softmax(F.linear(self.encoder(torch.cat([z.unsqueeze(1).repeat([1, x.size(1), 1]),x_emb],dim=-1)), self.output_matrix))
+
+        logits = log_prob_a + log_prob_b_given_a
+
         # [B, 1, Vx]
         return Categorical(logits=logits)
 

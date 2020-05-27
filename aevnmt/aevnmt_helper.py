@@ -749,9 +749,9 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num
                 batch_log_marginals['tm/main'][s] = log_tm_prob + log_pz - log_qz
 
                 for aux_comp, aux_px_z in aux_lm_likelihoods.items():
-                    batch_log_marginals['lm/' + aux_comp][s] = model.log_likelihood_lm(aux_comp, aux_px_z,  x_shuf_out if aux_comp == "shuffled" else x_out) + log_pz - log_qz
+                    batch_log_marginals['lm/' + aux_comp][s] = model.log_likelihood_lm(aux_comp, aux_px_z,  x_shuf_out if aux_comp == "shuffled" or aux_comp=="skip_bigram_ff" else x_out) + log_pz - log_qz
                 for aux_comp, aux_py_xz in aux_tm_likelihoods.items():
-                    batch_log_marginals['tm/' + aux_comp][s] = model.log_likelihood_tm(aux_comp, aux_py_xz, y_shuf_out if aux_comp == "shuffled" else y_out) + log_pz - log_qz
+                    batch_log_marginals['tm/' + aux_comp][s] = model.log_likelihood_tm(aux_comp, aux_py_xz, y_shuf_out if aux_comp == "shuffled" or aux_comp=="skip_bigram_ff" else y_out) + log_pz - log_qz
 
             for comp_name, log_marginals in batch_log_marginals.items():
                 # Average over all samples.

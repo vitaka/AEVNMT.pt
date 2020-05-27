@@ -82,17 +82,27 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
         refs=[]
         for s in sentences:
             splits=s.split(" ")
+            #print("Builgind skipbigrams from: {}".format(s))
             perm_indexes=skip_bigram_indexes(splits)
             #If number of tokens is odd, remove last one
             if len(splits) % 2 != 0:
                 perm_indexes=perm_indexes[:-1]
             if len(perm_indexes) > 0:
-                new_sentences.append( " ".join(np.array(splits)[ perm_indexes[::2] ])  )
-                refs.append( " ".join(np.array(splits)[ perm_indexes[1::2] ])  )
+                news=" ".join(np.array(splits)[ perm_indexes[::2] ])
+                newref=" ".join(np.array(splits)[ perm_indexes[1::2] ])
+                #print("s: {}".format(news))
+                #print("ref: {}".format(newref))
+                new_sentences.append(news )
+                refs.append( newref )
+            else:
+                #Append a pad tken
+                new_sentences.append(PAD_TOKEN)
+                refs.append(PAD_TOKEN)
         sentences=new_sentences
-
-#        print(sentences)
-#        print(refs)
+       
+        #print(sentences)
+        #print(refs)
+        #print()
 #        print([len(s.split()) for s in sentences ] )
 #        print([len(s.split()) for s in refs ] )
 
@@ -132,8 +142,8 @@ def create_noisy_batch(sentences, vocab, device, word_dropout=0., map_to_ids=Tru
         refs = [[vocab[w] for w in sen.split()] for sen in refs]
         tok_refs = np.array([sen for sen in refs])
 
-        print(seq_lengths)
-        print([len(sen) for idx, sen in enumerate(tok_refs)])
+        #print(seq_lengths)
+        #print([len(sen) for idx, sen in enumerate(tok_refs)])
 
         pad_id_output = [
             [sen[t] if t < seq_lengths[idx] else pad_id for t in range(max_len)]
