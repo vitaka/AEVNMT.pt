@@ -421,7 +421,7 @@ def train(model,
 #                          f"per_token_side_loss(x) = {tracker_x.avg('SenVAE/sideLoss', 'num_tokens'):,.2f} -- "
                           #f"tokennorm_side_loss(x) = {tracker_x.avg('SenVAE/sideLossTokenNorm','num_sentences'):,.2f} -- "
                           f"tokennorm_side_ELBO(x) = {tracker_x.avg('SenVAE/sideELBOTokenNorm','num_sentences'):,.2f} -- "
-                          f"lag_side(x) = {tracker_x.mean('LagSide/loss_0'):,.2f} bias= {bias:,.2f} u={u:,.2f}  -- "
+                          f"lag_side(x) = {tracker_x.mean('LagSide/loss_0'):,.2f} bias= {bias:,.2f} u={u}  -- "
                           f"lag_divergence_u = {tracker_x.mean('LagDivergence/u_0'):,.2f}-- "
                           f"lag_diff(x) = {tracker_x.mean('LagSide/difference_0'):,.2f} -- "
                           f"JSpriordec(x) = {tracker_x.avg('SenVAE/JSpriordec','num_tokens'):,.2f} -- "
