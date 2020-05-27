@@ -389,9 +389,9 @@ def train(model,
                 if hparams.evaluate_every > 0 and step_counter.step('x') % hparams.evaluate_every == 0:
                     save_eval=True
                     if model.lag_side is not None:
-                        bias=model.lag_side[1].bias.item()
+                        bias=model.lag_side[0][1].bias.item()
                         with torch.no_grad():
-                            u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
+                            u=model.lag_side[0](torch.zeros(1,device=x_in.device)).item()
                             if u > 5:
                                 save_eval=False
                     only_side_losses_phase=run_evaluation(step_counter.step(),only_side_losses_phase,val_data, save_checkpoint=save_eval)
@@ -405,9 +405,9 @@ def train(model,
                     bias=0.0
                     u=0.0
                     if model.lag_side is not None:
-                        bias=model.lag_side[1].bias.item()
+                        bias=model.lag_side[0][1].bias.item()
                         with torch.no_grad():
-                            u=model.lag_side(torch.zeros(1,device=x_in.device)).item()
+                            u=model.lag_side[0](torch.zeros(1,device=x_in.device)).item()
                     sidenormtok=" ".join( f"{k} = {tracker_x.avg(k,'num_sentences'):,.2f} --" for k in tracker_x.stats if k.endswith("_normtok") )
                     print(f"({epoch_num}) step {step_counter.step()} "
                           f"x: {step_counter.step('x')} "

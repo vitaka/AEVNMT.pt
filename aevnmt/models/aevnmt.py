@@ -48,11 +48,11 @@ class AEVNMT(nn.Module):
             self.lag = None
 
         if lag_side is not None:
-            self.lag_side= [torch.nn.Sequential(
+            self.lag_side= torch.nn.ModuleList([torch.nn.Sequential(
                 torch.nn.Dropout(0.5),
                 torch.nn.Linear(1, 1),
                 torch.nn.Softplus()
-            ) for i in range(len(lag_side)) ]
+            ) for i in range(len(lag_side)) ])
             self.lag_side_target=lag_side
         else:
             self.lag_side= None
@@ -354,7 +354,6 @@ class AEVNMT(nn.Module):
                 w=targets_x.size(1)/(1.0*self.aux_lms[aux_name].vocab_size)
             side_lm_likelihood[c] = out_dict['lm/' + aux_name]
             side_lm_likelihood_per_token_norm[c] = out_dict['lm/' + aux_name + '_normtok']
-            side_lm_names.append(aux_name)
             side_lm_likelihoods_lagr[aux_name]=out_dict['lm/' + aux_name]
         side_lm_names=sorted(side_lm_likelihoods_lagr.keys())
 

@@ -15,8 +15,9 @@ class ListOfInts(list):
 class ListOfFloats(list):
 
     def __init__(self, values):
+        print("processing list of floats: {}".format(values))
         if isinstance(values, str):
-            values = (float(v) for v in values.split())
+            values = (float(v) for v in values.split(','))
         else:
             values = (float(v) for v in values)
         super(ListOfFloats, self).__init__(values)
