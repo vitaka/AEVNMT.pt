@@ -405,9 +405,11 @@ def train(model,
                     bias=0.0
                     u=0.0
                     if model.lag_side is not None:
-                        bias=model.lag_side[0][1].bias.item()
-                        with torch.no_grad():
-                            u=model.lag_side[0](torch.zeros(1,device=x_in.device)).item()
+                        u=[]
+                        for i in range(len(model.lag_side)):
+                            bias=model.lag_side[i][1].bias.item()
+                            with torch.no_grad():
+                                u.append(model.lag_side[i](torch.zeros(1,device=x_in.device)).item())
                     sidenormtok=" ".join( f"{k} = {tracker_x.avg(k,'num_sentences'):,.2f} --" for k in tracker_x.stats if k.endswith("_normtok") )
                     print(f"({epoch_num}) step {step_counter.step()} "
                           f"x: {step_counter.step('x')} "
