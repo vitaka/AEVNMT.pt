@@ -94,6 +94,22 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
             feed_z=hparams.feed_z,
             gate_z=hparams.gate_z
         )
+
+    if hparams.gated_rnn_loss:
+        lms['gated'] = CorrelatedCategoricalsLM(
+            embedder=src_embedder,
+            sos_idx=vocab_src[SOS_TOKEN],
+            eos_idx=vocab_src[EOS_TOKEN],
+            latent_size=hparams.latent_size,
+            hidden_size=hparams.hidden_size,
+            dropout=hparams.dropout,
+            num_layers=hparams.num_dec_layers,
+            cell_type=hparams.cell_type,
+            tied_embeddings=hparams.tied_embeddings,
+            feed_z=True,
+            gate_z=False,
+            gate_only_x=True
+        )
     if hparams.nonar_lm:
         lms['nonar'] =  NonCorrelatedCategoricalsLM(
                  embedder=src_embedder,

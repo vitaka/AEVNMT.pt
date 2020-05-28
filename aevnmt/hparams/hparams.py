@@ -84,6 +84,7 @@ options = {
     "feed_z":(bool, False, False, "Concatenate z to the previous word embeddings at each timestep", 1),
     "gate_z":(bool, False, False, "Modfify z with a gating mechanism", 1),
 
+    "gated_rnn_loss":(bool, False, False, "z is also used to produce source sentences with an LM whose only input at each timestep is a tanh-gated version of z", 1),
     "aggressive_word_dropout_value":(float, 0.5, False, "Aggreessive word dropout value", 1),
     "word_dropout_decoder_loss":(bool, False, False, "z is also used to produce source sentences with an LM with aggressive word dropout", 1),
     "skip_bigram_ff_loss":(bool, False, False, "Add skip bigram loss.", 1),
