@@ -130,7 +130,8 @@ class TranslationEngine:
 
         model, _, _, translate_fn, sample_fn = create_model(self.hparams, self.vocab_src, self.vocab_tgt)
         if self.hparams.use_gpu:
-            model.load_state_dict(torch.load(self.model_checkpoint))
+            loadresult=model.load_state_dict(torch.load(self.model_checkpoint),strict=False)
+            print("Loading model result: {}".format(loadresult))
         else:
             model.load_state_dict(torch.load(self.model_checkpoint, map_location='cpu'))
 
@@ -307,7 +308,12 @@ def main(hparams=None):
         output_dir = Path(hparams.output_dir)
         hparams_file = output_dir / "hparams"
         hparams.update_from_file(hparams_file, override=False)
-
+    
+    old_lagr_weight=False
+    if hparams.lag_side is not None:
+        if isinstance(hparams.lag_side, float):
+            hparams.lag_side=[hparams.lag_side]
+            old_lagr_weight=True
     engine = TranslationEngine(hparams)
 
     engine.load_statics()

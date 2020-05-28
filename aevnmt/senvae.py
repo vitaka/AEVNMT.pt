@@ -469,6 +469,10 @@ def main():
     hparams = Hyperparameters()
     print("\n==== Hyperparameters")
     hparams.print_values()
+    
+    if hparams.lag_side is not None:
+        if isinstance(hparams.lag_side, float):
+            hparams.lag_side=[hparams.lag_side]
 
     # Create the output directory and save hparams
     out_dir = Path(hparams.output_dir)
