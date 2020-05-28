@@ -398,10 +398,10 @@ class CorrelatedCategoricalsLM(GenerativeLM):
             if self.gate_linear is not None:
                 z_in=z * torch.sigmoid(self.gate_linear(torch.cat([x_embed,z,hidden.squeeze(0)],dim=-1)) )
             elif self.gate_only_x_linear is not None:
-                z_in=z * torch.tanh(self.gate_only_x_linear(x_embed)
+                z_in=z * torch.tanh(self.gate_only_x_linear(x_embed))
             else:
                 z_in=z
-            if self.gate_only_x_linear is not None
+            if self.gate_only_x_linear is not None:
                 rnn_input=z_in.unsqueeze(1)
             else:
                 rnn_input=torch.cat([rnn_input, z_in.unsqueeze(1)], dim=-1)
