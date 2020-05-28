@@ -779,6 +779,8 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num
                 batch_log_marginals['joint/main'][s] = log_tm_prob + log_lm_prob + log_pz - log_qz
                 batch_log_marginals['lm/main'][s] = log_lm_prob + log_pz - log_qz
                 batch_log_marginals['tm/main'][s] = log_tm_prob + log_pz - log_qz
+                if s==0:
+                    log_marginal['lm/distortion'] += log_lm_prob.sum().item()
 
                 for aux_comp, aux_px_z in aux_lm_likelihoods.items():
                     batch_log_marginals['lm/' + aux_comp][s] = model.log_likelihood_lm(aux_comp, aux_px_z,  x_shuf_out if aux_comp == "shuffled" or aux_comp=="skip_bigram_ff" else x_out) + log_pz - log_qz
