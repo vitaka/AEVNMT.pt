@@ -340,7 +340,7 @@ class CorrelatedCategoricalsLM(GenerativeLM):
     """
 
     def __init__(self, embedder, sos_idx, eos_idx, latent_size, hidden_size,
-            dropout, num_layers, cell_type, tied_embeddings, feed_z, gate_z):
+            dropout, num_layers, cell_type, tied_embeddings, feed_z, gate_z, gate_only_x=False):
         super().__init__()
         self.embedder = embedder
         self.pad_idx = embedder.padding_idx
@@ -356,7 +356,7 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         rnn_dropout = 0. if num_layers == 1 else dropout
         rnn_fn = rnn_creation_fn(cell_type)
         feed_z_size = latent_size if feed_z else 0
-        self.rnn = rnn_fn(embedder.embedding_dim + feed_z_size, hidden_size,
+        self.rnn = rnn_fn(embedder.embedding_dim + feed_z_size if not gate_only_x else feed_z_size, hidden_size,
             batch_first=True, dropout=rnn_dropout, num_layers=num_layers)
         self.tied_embeddings = tied_embeddings
         self.pre_output_matrix=None
@@ -370,6 +370,9 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         if gate_z:
             self.gate_linear=nn.Linear(embedder.embedding_dim+feed_z_size+hidden_size,feed_z_size)
 
+        self.gate_only_x_linear=None
+        if gate_only_x:
+            self.gate_only_x_linear=nn.Linear(embedder.embedding_dim,feed_z_size)
     def init(self, z):
         hidden = tile_rnn_hidden(
             # [num_layers, ..., hidden_size]
@@ -394,9 +397,14 @@ class CorrelatedCategoricalsLM(GenerativeLM):
         if self.feed_z:
             if self.gate_linear is not None:
                 z_in=z * torch.sigmoid(self.gate_linear(torch.cat([x_embed,z,hidden.squeeze(0)],dim=-1)) )
+            elif self.gate_only_x_linear is not None:
+                z_in=z * torch.tanh(self.gate_only_x_linear(x_embed))
             else:
                 z_in=z
-            rnn_input=torch.cat([rnn_input, z_in.unsqueeze(1)], dim=-1)
+            if self.gate_only_x_linear is not None:
+                rnn_input=z_in.unsqueeze(1)
+            else:
+                rnn_input=torch.cat([rnn_input, z_in.unsqueeze(1)], dim=-1)
         rnn_output, hidden = self.rnn(rnn_input, hidden)
         rnn_output = self.dropout_layer(rnn_output)
         return hidden, rnn_output

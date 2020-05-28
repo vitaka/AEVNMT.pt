@@ -80,6 +80,36 @@ def create_aux_language_models(vocab_src, src_embedder, hparams) -> Dict[str, Ge
             feed_z=hparams.feed_z,
             gate_z=hparams.gate_z
         )
+    if hparams.word_dropout_decoder_loss:
+        lms['word_dropout'] = CorrelatedCategoricalsLM(
+            embedder=src_embedder,
+            sos_idx=vocab_src[SOS_TOKEN],
+            eos_idx=vocab_src[EOS_TOKEN],
+            latent_size=hparams.latent_size,
+            hidden_size=hparams.hidden_size,
+            dropout=hparams.dropout,
+            num_layers=hparams.num_dec_layers,
+            cell_type=hparams.cell_type,
+            tied_embeddings=hparams.tied_embeddings,
+            feed_z=hparams.feed_z,
+            gate_z=hparams.gate_z
+        )
+
+    if hparams.gated_rnn_loss:
+        lms['gated'] = CorrelatedCategoricalsLM(
+            embedder=src_embedder,
+            sos_idx=vocab_src[SOS_TOKEN],
+            eos_idx=vocab_src[EOS_TOKEN],
+            latent_size=hparams.latent_size,
+            hidden_size=hparams.hidden_size,
+            dropout=hparams.dropout,
+            num_layers=hparams.num_dec_layers,
+            cell_type=hparams.cell_type,
+            tied_embeddings=hparams.tied_embeddings,
+            feed_z=True,
+            gate_z=False,
+            gate_only_x=True
+        )
     if hparams.nonar_lm:
         lms['nonar'] =  NonCorrelatedCategoricalsLM(
                  embedder=src_embedder,
@@ -693,7 +723,7 @@ def _evaluate_perplexity(model, val_dl, vocab_src, vocab_tgt, hparams,device,num
             x_in, x_out, seq_mask_x, seq_len_x = create_batch(sentences_x, vocab_src, device)
             x_shuf_in, x_shuf_out, seq_mask_x_shuf, seq_len_x_shuf, noisy_x_shuf_in=create_noisy_batch(
                 sentences_x, vocab_src, device,
-                word_dropout=0.0,shuffle_toks=('shuffled' in model.aux_lms),full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram,skip_bigrams=('skip_bigram_ff' in model.aux_lms))
+                word_dropout= hparams.aggressive_word_dropout_value if 'word_dropout' in model.aux_lms else 0.0,shuffle_toks=('shuffled' in model.aux_lms),full_words_shuf=hparams.shuffle_lm_keep_bpe,skip_bigram_shuf=hparams.shuffle_lm_skip_bigram,skip_bigrams=('skip_bigram_ff' in model.aux_lms))
 
             if vocab_tgt is not None:
                 y_in, y_out, seq_mask_y, seq_len_y = create_batch(sentences_y, vocab_tgt, device)
